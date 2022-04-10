@@ -1,6 +1,6 @@
 /*
  *  ============LICENSE_START=======================================================
- *  Copyright (C) 2021 Nordix Foundation
+ *  Copyright (C) 2021-2022 Nordix Foundation
  *  Modifications Copyright (C) 2021 Pantheon.tech
  *  Modifications Copyright (C) 2021 Bell Canada.
  *  ================================================================================
@@ -22,11 +22,14 @@
 
 package org.onap.cps.spi.impl
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.onap.cps.DatabaseTestContainer
 import org.onap.cps.spi.repository.AnchorRepository
 import org.onap.cps.spi.repository.DataspaceRepository
 import org.onap.cps.spi.repository.FragmentRepository
 import org.onap.cps.spi.repository.YangResourceRepository
+import org.onap.cps.utils.JsonObjectMapper
+import org.spockframework.spring.SpringBean
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.testcontainers.spock.Testcontainers
@@ -52,9 +55,13 @@ class CpsPersistenceSpecBase extends Specification {
     @Autowired
     FragmentRepository fragmentRepository
 
+    @SpringBean
+    JsonObjectMapper jsonObjectMapper = new JsonObjectMapper(new ObjectMapper())
+
     static final String CLEAR_DATA = '/data/clear-all.sql'
 
     static final String DATASPACE_NAME = 'DATASPACE-001'
+    static final String DATASPACE_NAME2 = 'DATASPACE-002'
     static final String SCHEMA_SET_NAME1 = 'SCHEMA-SET-001'
     static final String SCHEMA_SET_NAME2 = 'SCHEMA-SET-002'
     static final String ANCHOR_NAME1 = 'ANCHOR-001'

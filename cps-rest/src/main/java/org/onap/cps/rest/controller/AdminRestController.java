@@ -1,7 +1,7 @@
 /*
  *  ============LICENSE_START=======================================================
- *  Copyright (C) 2020 Nordix Foundation
- *  Modifications Copyright (C) 2020 Bell Canada.
+ *  Copyright (C) 2020-2022 Nordix Foundation
+ *  Modifications Copyright (C) 2020-2021 Bell Canada.
  *  Modifications Copyright (C) 2021 Pantheon.tech
  *  ================================================================================
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,7 +28,9 @@ import static org.onap.cps.spi.CascadeDeleteAllowed.CASCADE_DELETE_PROHIBITED;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.modelmapper.ModelMapper;
+import javax.validation.Valid;
+import javax.validation.constraints.NotNull;
+import lombok.RequiredArgsConstructor;
 import org.onap.cps.api.CpsAdminService;
 import org.onap.cps.api.CpsModuleService;
 import org.onap.cps.rest.api.CpsAdminApi;
@@ -36,7 +38,6 @@ import org.onap.cps.rest.model.AnchorDetails;
 import org.onap.cps.rest.model.SchemaSetDetails;
 import org.onap.cps.spi.model.Anchor;
 import org.onap.cps.spi.model.SchemaSet;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -45,16 +46,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("${rest.api.cps-base-path}")
+@RequiredArgsConstructor
 public class AdminRestController implements CpsAdminApi {
 
-    @Autowired
-    private CpsAdminService cpsAdminService;
-
-    @Autowired
-    private CpsModuleService cpsModuleService;
-
-    @Autowired
-    private ModelMapper modelMapper;
+    private final CpsAdminService cpsAdminService;
+    private final CpsModuleService cpsModuleService;
+    private final CpsRestInputMapper cpsRestInputMapper;
 
     /**
      * Create a dataspace.
@@ -63,20 +60,21 @@ public class AdminRestController implements CpsAdminApi {
      * @return a {@Link ResponseEntity} of created dataspace name & {@link HttpStatus} CREATED
      */
     @Override
-    public ResponseEntity<String> createDataspace(final String dataspaceName) {
+    public ResponseEntity<String> createDataspace(@NotNull @Valid final String dataspaceName) {
         cpsAdminService.createDataspace(dataspaceName);
         return new ResponseEntity<>(dataspaceName, HttpStatus.CREATED);
     }
 
     /**
-     * Delete a dataspace based on a given name.
+     * Delete a dataspace.
      *
-     * @param dataspaceName dataspace name
-     * @return a {@Link ResponseEntity} of {@link HttpStatus} NOT_IMPLEMENTED
+     * @param dataspaceName name of dataspace to be deleted
+     * @return a {@Link ResponseEntity} of {@link HttpStatus} NO_CONTENT
      */
     @Override
-    public ResponseEntity<Object> deleteDataspace(final String dataspaceName) {
-        return new ResponseEntity<>(HttpStatus.NOT_IMPLEMENTED);
+    public ResponseEntity<Void> deleteDataspace(final String dataspaceName) {
+        cpsAdminService.deleteDataspace(dataspaceName);
+        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
     /**
@@ -88,8 +86,8 @@ public class AdminRestController implements CpsAdminApi {
      * @return a {@Link ResponseEntity} of created schemaset name & {@link HttpStatus} CREATED
      */
     @Override
-    public ResponseEntity<String> createSchemaSet(final MultipartFile multipartFile,
-        final String schemaSetName, final String dataspaceName) {
+    public ResponseEntity<String> createSchemaSet(@NotNull @Valid final String schemaSetName,
+        final String dataspaceName, @Valid final MultipartFile multipartFile) {
         cpsModuleService.createSchemaSet(dataspaceName, schemaSetName, extractYangResourcesMap(multipartFile));
         return new ResponseEntity<>(schemaSetName, HttpStatus.CREATED);
     }
@@ -104,7 +102,7 @@ public class AdminRestController implements CpsAdminApi {
     @Override
     public ResponseEntity<SchemaSetDetails> getSchemaSet(final String dataspaceName, final String schemaSetName) {
         final var schemaSet = cpsModuleService.getSchemaSet(dataspaceName, schemaSetName);
-        final var schemaSetDetails = modelMapper.map(schemaSet, SchemaSetDetails.class);
+        final var schemaSetDetails = cpsRestInputMapper.toSchemaSetDetails(schemaSet);
         return new ResponseEntity<>(schemaSetDetails, HttpStatus.OK);
     }
 
@@ -130,8 +128,8 @@ public class AdminRestController implements CpsAdminApi {
      * @return a ResponseEntity with the anchor name & {@link HttpStatus} CREATED
      */
     @Override
-    public ResponseEntity<String> createAnchor(final String dataspaceName, final String schemaSetName,
-        final String anchorName) {
+    public ResponseEntity<String> createAnchor(final String dataspaceName, @NotNull @Valid final String schemaSetName,
+        @NotNull @Valid final String anchorName) {
         cpsAdminService.createAnchor(dataspaceName, schemaSetName, anchorName);
         return new ResponseEntity<>(anchorName, HttpStatus.CREATED);
     }
@@ -159,7 +157,7 @@ public class AdminRestController implements CpsAdminApi {
     @Override
     public ResponseEntity<AnchorDetails> getAnchor(final String dataspaceName, final String anchorName) {
         final var anchor = cpsAdminService.getAnchor(dataspaceName, anchorName);
-        final var anchorDetails = modelMapper.map(anchor, AnchorDetails.class);
+        final var anchorDetails = cpsRestInputMapper.toAnchorDetails(anchor);
         return new ResponseEntity<>(anchorDetails, HttpStatus.OK);
     }
 
@@ -172,8 +170,8 @@ public class AdminRestController implements CpsAdminApi {
     @Override
     public ResponseEntity<List<AnchorDetails>> getAnchors(final String dataspaceName) {
         final Collection<Anchor> anchors = cpsAdminService.getAnchors(dataspaceName);
-        final List<AnchorDetails> anchorDetails = anchors.stream().map(anchor ->
-            modelMapper.map(anchor, AnchorDetails.class)).collect(Collectors.toList());
+        final List<AnchorDetails> anchorDetails = anchors.stream().map(cpsRestInputMapper::toAnchorDetails)
+            .collect(Collectors.toList());
         return new ResponseEntity<>(anchorDetails, HttpStatus.OK);
     }
 }

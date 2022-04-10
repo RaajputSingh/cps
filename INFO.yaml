@@ -39,7 +39,7 @@ mailing_list:
 realtime_discussion: ''
 meetings:
     - type: 'zoom'
-      agenda: 'https://wiki.onap.org/pages/viewpage.action?pageId=84644224'
+      agenda: 'https://wiki.onap.org/pages/viewpage.action?pageId=111117075'
       url: 'https://zoom.us/j/836561560?pwd=TTZNcFhXTWYxMmZ4SlgzcVZZQXluUT09'
       server: 'n/a'
       channel: 'n/a'
@@ -57,11 +57,6 @@ committers:
       company: 'Bell Canada'
       id: 'brusak'
       timezone: 'America/Toronto'
-    - name: 'Niamh Core'
-      email: 'niamh.core@est.tech'
-      company: 'Ericsson Software Technology'
-      id: 'niamhcore'
-      timezone: 'Europe/Dublin'
     - name: 'Aditya Puthuparambil'
       email: 'aditya.puthuparambil@bell.ca'
       company: 'Bell Canada'
@@ -72,6 +67,11 @@ committers:
       company: 'Bell Canada'
       id: 'renukumari'
       timezone: 'America/Toronto'
+    - name: 'Joseph Keenan'
+      email: 'joseph.keenan@est.tech'
+      company: 'Ericsson Software Technology'
+      id: 'JosephKeenan'
+      timezone: 'Europe/Dublin'
 repositories:
     - cps
 tsc:

@@ -2,7 +2,7 @@
  *  ============LICENSE_START=======================================================
  *  Copyright (C) 2020-2021 Pantheon.tech
  *  Modifications Copyright (C) 2020-2021 Bell Canada.
- *  Modifications Copyright (C) 2021 Nordix Foundation
+ *  Modifications Copyright (C) 2021-2022 Nordix Foundation
  *  ================================================================================
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,11 +28,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 
-import org.modelmapper.ModelMapper
+import org.mapstruct.factory.Mappers
 import org.onap.cps.api.CpsAdminService
-import org.onap.cps.api.CpsDataService
 import org.onap.cps.api.CpsModuleService
-import org.onap.cps.api.CpsQueryService
 import org.onap.cps.spi.exceptions.AlreadyDefinedException
 import org.onap.cps.spi.exceptions.SchemaSetInUseException
 import org.onap.cps.spi.model.Anchor
@@ -49,7 +47,7 @@ import org.springframework.util.LinkedMultiValueMap
 import org.springframework.util.MultiValueMap
 import spock.lang.Specification
 
-@WebMvcTest
+@WebMvcTest(AdminRestController)
 class AdminRestControllerSpec extends Specification {
 
     @SpringBean
@@ -59,13 +57,7 @@ class AdminRestControllerSpec extends Specification {
     CpsAdminService mockCpsAdminService = Mock()
 
     @SpringBean
-    CpsDataService mockCpsDataService = Mock()
-
-    @SpringBean
-    CpsQueryService mockCpsQueryService = Mock()
-
-    @SpringBean
-    ModelMapper modelMapper = Spy()
+    CpsRestInputMapper cpsRestInputMapper = Mappers.getMapper(CpsRestInputMapper)
 
     @Autowired
     MockMvc mvc
@@ -74,14 +66,13 @@ class AdminRestControllerSpec extends Specification {
     def basePath
 
     def dataspaceName = 'my_dataspace'
-    def anchor = new Anchor(name: 'my_anchor')
-    def anchorList = [anchor]
     def anchorName = 'my_anchor'
     def schemaSetName = 'my_schema_set'
+    def anchor = new Anchor(name: anchorName, dataspaceName: dataspaceName, schemaSetName: schemaSetName)
 
     def 'Create new dataspace.'() {
         given: 'an endpoint'
-            def createDataspaceEndpoint = "$basePath/v1/dataspaces";
+            def createDataspaceEndpoint = "$basePath/v1/dataspaces"
         when: 'post is invoked'
             def response =
                     mvc.perform(
@@ -96,7 +87,7 @@ class AdminRestControllerSpec extends Specification {
 
     def 'Create dataspace over existing with same name.'() {
         given: 'an endpoint'
-            def createDataspaceEndpoint = "$basePath/v1/dataspaces";
+            def createDataspaceEndpoint = "$basePath/v1/dataspaces"
         and: 'the service method throws an exception indicating the dataspace is already defined'
             def thrownException = new AlreadyDefinedException(dataspaceName, new RuntimeException())
             mockCpsAdminService.createDataspace(dataspaceName) >> { throw thrownException }
@@ -280,7 +271,7 @@ class AdminRestControllerSpec extends Specification {
 
     def 'Get existing anchor.'() {
         given: 'service method returns a list of anchors'
-            mockCpsAdminService.getAnchors(dataspaceName) >> anchorList
+            mockCpsAdminService.getAnchors(dataspaceName) >> [anchor]
         and: 'an endpoint'
             def anchorEndpoint = "$basePath/v1/dataspaces/$dataspaceName/anchors"
         when: 'get all anchors API is invoked'
@@ -317,6 +308,18 @@ class AdminRestControllerSpec extends Specification {
             response.status == HttpStatus.NO_CONTENT.value()
     }
 
+    def 'Delete dataspace.'() {
+        given: 'an endpoint'
+            def dataspaceEndpoint = "$basePath/v1/dataspaces"
+        when: 'delete dataspace endpoint is invoked'
+            def response = mvc.perform(delete(dataspaceEndpoint)
+                .param('dataspace-name', dataspaceName))
+                .andReturn().response
+        then: 'associated service method is invoked with expected parameter'
+            1 * mockCpsAdminService.deleteDataspace(dataspaceName)
+        and: 'response code indicates success'
+            response.status == HttpStatus.NO_CONTENT.value()
+    }
 
     def createMultipartFile(filename, content) {
         return new MockMultipartFile("file", filename, "text/plain", content.getBytes())
@@ -339,4 +342,5 @@ class AdminRestControllerSpec extends Specification {
         multipartFile.getInputStream() >> { throw new IOException() }
         return multipartFile
     }
+
 }

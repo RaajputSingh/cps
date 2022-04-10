@@ -1,8 +1,9 @@
 /*
  *  ============LICENSE_START=======================================================
  *  Copyright (C) 2021 highstreet technologies GmbH
- *  Modifications Copyright (C) 2021 Nordix Foundation
+ *  Modifications Copyright (C) 2021-2022 Nordix Foundation
  *  Modifications Copyright (C) 2021 Pantheon.tech
+ *  Modifications Copyright (C) 2022 Bell Canada
  *  ================================================================================
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,10 +23,15 @@
 
 package org.onap.cps.ncmp.api;
 
+import static org.onap.cps.ncmp.api.impl.operations.DmiRequestBody.OperationEnum;
+
 import java.util.Collection;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.onap.cps.spi.FetchDescendantsOption;
-import org.onap.cps.spi.model.DataNode;
+import java.util.Set;
+import org.onap.cps.ncmp.api.models.CmHandleQueryApiParameters;
+import org.onap.cps.ncmp.api.models.DmiPluginRegistration;
+import org.onap.cps.ncmp.api.models.DmiPluginRegistrationResponse;
+import org.onap.cps.ncmp.api.models.NcmpServiceCmHandle;
+import org.onap.cps.spi.model.ModuleReference;
 
 /*
  * Datastore interface for handling CPS data.
@@ -33,69 +39,93 @@ import org.onap.cps.spi.model.DataNode;
 public interface NetworkCmProxyDataService {
 
     /**
-     * Retrieves datanode by XPath for a given cm handle.
+     * Registration of New CM Handles.
      *
-     * @param cmHandle               The identifier for a network function, network element, subnetwork or any other cm
-     *                               object by managed Network CM Proxy
-     * @param xpath                  xpath
-     * @param fetchDescendantsOption defines the scope of data to fetch: either single node or all the descendant nodes
-     *                               (recursively) as well
-     * @return data node object
+     * @param dmiPluginRegistration Dmi Plugin Registration
+     * @return dmiPluginRegistrationResponse
      */
-    DataNode getDataNode(@NonNull String cmHandle, @NonNull String xpath,
-        @NonNull FetchDescendantsOption fetchDescendantsOption);
+    DmiPluginRegistrationResponse updateDmiRegistrationAndSyncModule(DmiPluginRegistration dmiPluginRegistration);
 
     /**
-     * Get datanodes for the given cm handle by cps path.
+     * Get resource data for data store pass-through operational
+     * using dmi.
      *
-     * @param cmHandle               The identifier for a network function, network element, subnetwork or any other cm
-     *                               object by managed Network CM Proxy
-     * @param cpsPath                cps path
-     * @param fetchDescendantsOption defines whether the descendants of the node(s) found by the query should be
-     *                               included in the output
-     * @return a collection of datanodes
+     * @param cmHandleId cm handle identifier
+     * @param resourceIdentifier resource identifier
+     * @param optionsParamInQuery options query
+     * @param topicParamInQuery topic name for (triggering) async responses
+     * @param requestId unique requestId for async request
+     * @return {@code Object} resource data
      */
-    Collection<DataNode> queryDataNodes(@NonNull String cmHandle, @NonNull String cpsPath,
-        @NonNull FetchDescendantsOption fetchDescendantsOption);
+    Object getResourceDataOperationalForCmHandle(String cmHandleId,
+                                                 String resourceIdentifier,
+                                                 String optionsParamInQuery,
+                                                 String topicParamInQuery,
+                                                 String requestId);
 
     /**
-     * Creates data node with descendants at root level or under existing node (if parent node xpath is provided).
+     * Get resource data for data store pass-through running
+     * using dmi.
      *
-     * @param cmHandle        The identifier for a network function, network element, subnetwork or any other cm
-     *                        object managed by Network CM Proxy
-     * @param parentNodeXpath xpath to parent node or '/' for root level
-     * @param jsonData        data as JSON string
+     * @param cmHandleId cm handle identifier
+     * @param resourceIdentifier resource identifier
+     * @param optionsParamInQuery options query
+     * @param topicParamInQuery topic name for (triggering) async responses
+     * @param requestId unique requestId for async request
+     * @return {@code Object} resource data
      */
-    void createDataNode(@NonNull String cmHandle, @NonNull String parentNodeXpath, @NonNull String jsonData);
+    Object getResourceDataPassThroughRunningForCmHandle(String cmHandleId,
+                                                        String resourceIdentifier,
+                                                        String optionsParamInQuery,
+                                                        String topicParamInQuery,
+                                                        String requestId);
 
     /**
-     * Creates one or more child node elements with descendants under existing node from list-node data fragment.
-     *
-     * @param cmHandle        The identifier for a network function, network element, subnetwork or any other cm
-     *                        object managed by Network CM Proxy
-     * @param parentNodeXpath xpath to parent node
-     * @param jsonData        data as JSON string
+     * Write resource data for data store pass-through running
+     * using dmi for given cm-handle.
+     *  @param cmHandleId cm handle identifier
+     * @param resourceIdentifier resource identifier
+     * @param operation required operation
+     * @param requestBody request body to create resource
+     * @param contentType content type in body
+     * @return {@code Object} return data
      */
-    void addListNodeElements(@NonNull String cmHandle, @NonNull String parentNodeXpath, @NonNull String jsonData);
+    Object writeResourceDataPassThroughRunningForCmHandle(String cmHandleId,
+                                                        String resourceIdentifier,
+                                                        OperationEnum operation,
+                                                        String requestBody,
+                                                        String contentType);
 
     /**
-     * Updates data node for given cm handle using xpath to parent node.
+     * Retrieve module references for the given cm handle.
      *
-     * @param cmHandle        The identifier for a network function, network element, subnetwork or any other cm object
-     *                        by managed Network CM Proxy
-     * @param parentNodeXpath xpath to parent node
-     * @param jsonData        json data
+     * @param cmHandleId cm handle identifier
+     * @return a collection of modules names and revisions
      */
-    void updateNodeLeaves(@NonNull String cmHandle, @NonNull String parentNodeXpath, @NonNull String jsonData);
+    Collection<ModuleReference> getYangResourcesModuleReferences(String cmHandleId);
 
     /**
-     * Replaces existing data node content including descendants.
+     * Query cm handle identifiers for the given collection of module names.
      *
-     * @param cmHandle        The identifier for a network function, network element, subnetwork or any other cm object
-     *                        by managed Network CM Proxy
-     * @param parentNodeXpath xpath to parent node
-     * @param jsonData        json data
+     * @param moduleNames module names.
+     * @return a collection of cm handle identifiers. The schema set for each cm handle must include all the
+     *         given module names
      */
-    void replaceNodeTree(@NonNull String cmHandle, @NonNull String parentNodeXpath, @NonNull String jsonData);
+    Collection<String> executeCmHandleHasAllModulesSearch(Collection<String> moduleNames);
 
+    /**
+     * Query cm handle details by cm handle's name.
+     *
+     * @param cmHandleId cm handle identifier
+     * @return a collection of cm handle details.
+     */
+    NcmpServiceCmHandle getNcmpServiceCmHandle(String cmHandleId);
+
+    /**
+     * Query and return cm handles that match the given query parameters.
+     *
+     * @param cmHandleQueryApiParameters the cm handle query parameters
+     * @return collection of cm handle ids
+     */
+    Set<String> queryCmHandles(CmHandleQueryApiParameters cmHandleQueryApiParameters);
 }

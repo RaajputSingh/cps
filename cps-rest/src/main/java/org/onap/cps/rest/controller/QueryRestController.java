@@ -1,6 +1,7 @@
 /*
  *  ============LICENSE_START=======================================================
- *  Copyright (C) 2021 Nordix Foundation
+ *  Copyright (C) 2021-2022 Nordix Foundation
+ *  Modifications Copyright (C) 2022 Bell Canada.
  *  ================================================================================
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,14 +21,18 @@
 
 package org.onap.cps.rest.controller;
 
-import com.google.gson.Gson;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 import javax.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.onap.cps.api.CpsQueryService;
 import org.onap.cps.rest.api.CpsQueryApi;
 import org.onap.cps.spi.FetchDescendantsOption;
 import org.onap.cps.spi.model.DataNode;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.onap.cps.utils.DataMapUtils;
+import org.onap.cps.utils.JsonObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,10 +40,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("${rest.api.cps-base-path}")
+@RequiredArgsConstructor
 public class QueryRestController implements CpsQueryApi {
 
-    @Autowired
-    private CpsQueryService cpsQueryService;
+    private final CpsQueryService cpsQueryService;
+    private final JsonObjectMapper jsonObjectMapper;
 
     @Override
     public ResponseEntity<Object> getNodesByDataspaceAndAnchorAndCpsPath(final String dataspaceName,
@@ -47,6 +53,9 @@ public class QueryRestController implements CpsQueryApi {
             ? FetchDescendantsOption.INCLUDE_ALL_DESCENDANTS : FetchDescendantsOption.OMIT_DESCENDANTS;
         final Collection<DataNode> dataNodes =
             cpsQueryService.queryDataNodes(dataspaceName, anchorName, cpsPath, fetchDescendantsOption);
-        return new ResponseEntity<>(new Gson().toJson(dataNodes), HttpStatus.OK);
+        final List<Map<String, Object>> dataNodeList = new ArrayList<>();
+        dataNodes.stream()
+            .forEach(dataNode -> dataNodeList.add(DataMapUtils.toDataMapWithIdentifier(dataNode)));
+        return new ResponseEntity<>(jsonObjectMapper.asJsonString(dataNodeList), HttpStatus.OK);
     }
 }

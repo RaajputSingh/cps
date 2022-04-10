@@ -2,6 +2,7 @@
   ============LICENSE_START=======================================================
    Copyright (C) 2020 Pantheon.tech
    Modifications Copyright (C) 2020-2021 Nordix Foundation.
+   Modifications Copyright (C) 2021 Bell Canada.
   ================================================================================
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -52,11 +53,12 @@ It starts both Postgres database and CPS services.
 
 1. Edit `docker-compose.yml`
    1. uncomment desired service to be deployed, by default `cps-and-ncmp` is enabled. You can comment it and uncomment `cps-standalone` or `ncmp-standalone`.
-   2. To send data-updated events to kafka, 
-      * uncomment the `zookeeper` and `kafka` services. 
-      * uncomment environment variables 
+   2. To send data-updated events to kafka,
+      * uncomment the `zookeeper` and `kafka` services.
+      * uncomment environment variables
         * `notification.data-updated.enabled: 'true'`
         * `KAFKA_BOOTSTRAP_SERVER: kafka:9092`
+        * `NOTIFICATION_DATASPACE_FILTER_PATTERNS: '.*'`
 2. Execute following command from `docker-compose` folder:
 
 Use one of the below version type that has been generated in the local system's docker image list after the build.
@@ -84,7 +86,7 @@ Then CPS can be started either using a Java Archive previously built or directly
 Following command starts the application using JAR file:
 
 ```bash
-DB_HOST=localhost DB_USERNAME=cps DB_PASSWORD=cps CPS_USERNAME=cpsuser CPS_PASSWORD=cpsr0cks! \
+DB_HOST=localhost DB_USERNAME=cps DB_PASSWORD=cps CPS_CORE_USERNAME=cpsuser CPS_CORE_PASSWORD=cpsr0cks! \
   java -jar cps-application/target/cps-application-x.y.z-SNAPSHOT.jar
 ```
 
@@ -95,14 +97,16 @@ Here are the steps to run or debug the application from Intellij:
 1. Enable the desired maven profile form Maven Tool Window
 2. Run a configuration from `Run -> Edit configurations` with following settings:
    * `Environment variables`: `DB_HOST=localhost;DB_USERNAME=cps;DB_PASSWORD=cps
-                                CPS_USERNAME=cpsuser CPS_PASSWORD=cpsr0cks!`
+                                CPS_CORE_USERNAME=cpsuser CPS_CORE_PASSWORD=cpsr0cks!`
 
 ## Accessing services
 
 Swagger UI and Open API specifications are available to discover service endpoints and send requests.
 
-* `http://localhost:<port-number>/swagger-ui/index.html`
-* `http://localhost:<port-number>/v3/api-docs?group=cps-docket`
+* `http://localhost:<port-number>/swagger-ui.html`
+* `http://localhost:<port-number>/api-docs/cps-core/openapi.yaml`
+* `http://localhost:<port-number>/api-docs/cps-ncmp/openapi.yaml`
+* `http://localhost:<port-number>/api-docs/cps-ncmp/openapi-inventory.yaml`
 
 with <port-number> being either `8080` if running the plain Java build or retrieved using following command
 if running from `docker-compose`:

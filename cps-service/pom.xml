@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   ============LICENSE_START=======================================================
-  Copyright (C) 2021 Nordix Foundation
+  Copyright (C) 2021-2022 Nordix Foundation
   Modifications Copyright (C) 2021 Bell Canada.
   Modifications Copyright (C) 2021 Pantheon.tech
   ================================================================================
@@ -28,11 +28,15 @@
   <parent>
     <groupId>org.onap.cps</groupId>
     <artifactId>cps-parent</artifactId>
-    <version>1.1.0-SNAPSHOT</version>
+    <version>3.1.0-SNAPSHOT</version>
     <relativePath>../cps-parent/pom.xml</relativePath>
   </parent>
 
   <artifactId>cps-service</artifactId>
+
+  <properties>
+    <minimum-coverage>0.94</minimum-coverage>
+  </properties>
 
   <dependencies>
     <dependency>
@@ -91,14 +95,27 @@
       <artifactId>spring-context</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <dependency>
       <!-- For parsing JSON object -->
       <groupId>com.google.code.gson</groupId>
       <artifactId>gson</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-aop</artifactId>
     </dependency>
     <!-- T E S T   D E P E N D E N C I E S -->
     <dependency>
       <groupId>org.codehaus.groovy</groupId>
       <artifactId>groovy</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.codehaus.groovy</groupId>
+      <artifactId>groovy-json</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -129,6 +146,11 @@
     <dependency>
       <groupId>org.springframework.kafka</groupId>
       <artifactId>spring-kafka-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.aspectj</groupId>
+      <artifactId>aspectjrt</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

@@ -1,14 +1,15 @@
 /*
  *  ============LICENSE_START=======================================================
- *  Copyright (C) 2020 Bell Canada.
+ *  Copyright (C) 2020-2022 Bell Canada.
  *  Modifications Copyright (C) 2021 Pantheon.tech
- *  Modifications Copyright (C) 2021 Nordix Foundation
+ *  Modifications Copyright (C) 2021-2022 Nordix Foundation
  *  ================================================================================
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
  *
  *        http://www.apache.org/licenses/LICENSE-2.0
+ *
  *  Unless required by applicable law or agreed to in writing, software
  *  distributed under the License is distributed on an "AS IS" BASIS,
  *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -21,11 +22,16 @@
 
 package org.onap.cps.rest.controller;
 
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import javax.validation.ValidationException;
+import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
 import org.onap.cps.api.CpsDataService;
 import org.onap.cps.rest.api.CpsDataApi;
 import org.onap.cps.spi.FetchDescendantsOption;
 import org.onap.cps.utils.DataMapUtils;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.onap.cps.utils.JsonObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,34 +39,44 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("${rest.api.cps-base-path}")
+@RequiredArgsConstructor
 public class DataRestController implements CpsDataApi {
 
     private static final String ROOT_XPATH = "/";
+    private static final String ISO_TIMESTAMP_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSSZ";
+    private static final DateTimeFormatter ISO_TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern(ISO_TIMESTAMP_FORMAT);
 
-    @Autowired
-    private CpsDataService cpsDataService;
+    private final CpsDataService cpsDataService;
+    private final JsonObjectMapper jsonObjectMapper;
 
     @Override
-    public ResponseEntity<String> createNode(final String jsonData, final String dataspaceName, final String anchorName,
-        final String parentNodeXpath) {
+    public ResponseEntity<String> createNode(final String dataspaceName, final String anchorName,
+        final Object jsonData, final String parentNodeXpath, final String observedTimestamp) {
+        final String jsonDataAsString = jsonObjectMapper.asJsonString(jsonData);
         if (isRootXpath(parentNodeXpath)) {
-            cpsDataService.saveData(dataspaceName, anchorName, jsonData);
+            cpsDataService.saveData(dataspaceName, anchorName, jsonDataAsString,
+                    toOffsetDateTime(observedTimestamp));
         } else {
-            cpsDataService.saveData(dataspaceName, anchorName, parentNodeXpath, jsonData);
+            cpsDataService.saveData(dataspaceName, anchorName, parentNodeXpath,
+                    jsonDataAsString, toOffsetDateTime(observedTimestamp));
         }
         return new ResponseEntity<>(HttpStatus.CREATED);
     }
 
     @Override
-    public ResponseEntity<String> addListNodeElements(final String jsonData, final String parentNodeXpath,
-        final String dataspaceName, final String anchorName) {
-        cpsDataService.saveListNodeData(dataspaceName, anchorName, parentNodeXpath, jsonData);
-        return new ResponseEntity<>(HttpStatus.CREATED);
+    public ResponseEntity<Void> deleteDataNode(final String dataspaceName, final String anchorName,
+        final String xpath, final String observedTimestamp) {
+        cpsDataService.deleteDataNode(dataspaceName, anchorName, xpath,
+            toOffsetDateTime(observedTimestamp));
+        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
     @Override
-    public ResponseEntity<Object> getNodesByDataspace(final String dataspaceName) {
-        return null;
+    public ResponseEntity<String> addListElements(final String parentNodeXpath,
+        final String dataspaceName, final String anchorName, final Object jsonData, final String observedTimestamp) {
+        cpsDataService.saveListElements(dataspaceName, anchorName, parentNodeXpath,
+                jsonObjectMapper.asJsonString(jsonData), toOffsetDateTime(observedTimestamp));
+        return new ResponseEntity<>(HttpStatus.CREATED);
     }
 
     @Override
@@ -70,31 +86,54 @@ public class DataRestController implements CpsDataApi {
             ? FetchDescendantsOption.INCLUDE_ALL_DESCENDANTS : FetchDescendantsOption.OMIT_DESCENDANTS;
         final var dataNode = cpsDataService.getDataNode(dataspaceName, anchorName, xpath,
             fetchDescendantsOption);
-        return new ResponseEntity<>(DataMapUtils.toDataMap(dataNode), HttpStatus.OK);
+        return new ResponseEntity<>(DataMapUtils.toDataMapWithIdentifier(dataNode), HttpStatus.OK);
     }
 
     @Override
-    public ResponseEntity<Object> updateNodeLeaves(final String jsonData, final String dataspaceName,
-        final String anchorName, final String parentNodeXpath) {
-        cpsDataService.updateNodeLeaves(dataspaceName, anchorName, parentNodeXpath, jsonData);
+    public ResponseEntity<Object> updateNodeLeaves(final String dataspaceName,
+        final String anchorName, final Object jsonData, final String parentNodeXpath, final String observedTimestamp) {
+        cpsDataService.updateNodeLeaves(dataspaceName, anchorName, parentNodeXpath,
+                jsonObjectMapper.asJsonString(jsonData), toOffsetDateTime(observedTimestamp));
         return new ResponseEntity<>(HttpStatus.OK);
     }
 
     @Override
-    public ResponseEntity<Object> replaceNode(final String jsonData, final String dataspaceName,
-        final String anchorName, final String parentNodeXpath) {
-        cpsDataService.replaceNodeTree(dataspaceName, anchorName, parentNodeXpath, jsonData);
+    public ResponseEntity<Object> replaceNode(final String dataspaceName, final String anchorName,
+        final Object jsonData, final String parentNodeXpath, final String observedTimestamp) {
+        cpsDataService
+                .replaceNodeTree(dataspaceName, anchorName, parentNodeXpath,
+                        jsonObjectMapper.asJsonString(jsonData), toOffsetDateTime(observedTimestamp));
         return new ResponseEntity<>(HttpStatus.OK);
     }
 
     @Override
-    public ResponseEntity<String> replaceListNodeElements(final String jsonData, final String parentNodeXpath,
-        final String dataspaceName, final String anchorName) {
-        cpsDataService.replaceListNodeData(dataspaceName, anchorName, parentNodeXpath, jsonData);
+    public ResponseEntity<Object> replaceListContent(final String parentNodeXpath,
+        final String dataspaceName, final String anchorName, final Object jsonData,
+        final String observedTimestamp) {
+        cpsDataService.replaceListContent(dataspaceName, anchorName, parentNodeXpath,
+                jsonObjectMapper.asJsonString(jsonData), toOffsetDateTime(observedTimestamp));
         return new ResponseEntity<>(HttpStatus.OK);
+    }
+
+    @Override
+    public ResponseEntity<Void> deleteListOrListElement(final String dataspaceName, final String anchorName,
+        final String listElementXpath, final String observedTimestamp) {
+        cpsDataService
+            .deleteListOrListElement(dataspaceName, anchorName, listElementXpath, toOffsetDateTime(observedTimestamp));
+        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
     private static boolean isRootXpath(final String xpath) {
         return ROOT_XPATH.equals(xpath);
+    }
+
+    private static OffsetDateTime toOffsetDateTime(final String datetTimestamp) {
+        try {
+            return StringUtils.isEmpty(datetTimestamp)
+                ? null : OffsetDateTime.parse(datetTimestamp, ISO_TIMESTAMP_FORMATTER);
+        } catch (final Exception exception) {
+            throw new ValidationException(
+                String.format("observed-timestamp must be in '%s' format", ISO_TIMESTAMP_FORMAT));
+        }
     }
 }

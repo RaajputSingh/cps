@@ -37,12 +37,23 @@ import org.onap.cps.spi.model.DataNode;
 public class DataMapUtils {
 
     /**
+     * Converts DataNode structure into a map including the root node identifier for a JSON response.
+     *
+     * @param dataNode data node object
+     * @return a map representing same data with the root node identifier
+     */
+    public static Map<String, Object> toDataMapWithIdentifier(final DataNode dataNode) {
+        return ImmutableMap.<String, Object>builder()
+            .put(getNodeIdentifier(dataNode.getXpath()), toDataMap(dataNode))
+            .build();
+    }
+
+    /**
      * Converts DataNode structure into a map for a JSON response.
      *
      * @param dataNode data node object
      * @return a map representing same data
      */
-
     public static Map<String, Object> toDataMap(final DataNode dataNode) {
         return ImmutableMap.<String, Object>builder()
             .putAll(dataNode.getLeaves())
@@ -58,7 +69,7 @@ public class DataMapUtils {
         return ImmutableMap.<String, Object>builder()
             .putAll(
                 dataNodes.stream()
-                    .filter(dataNode -> isListNode(dataNode.getXpath()))
+                    .filter(dataNode -> isListElement(dataNode.getXpath()))
                     .collect(groupingBy(
                         dataNode -> getNodeIdentifier(dataNode.getXpath()),
                         mapping(DataMapUtils::toDataMap, toUnmodifiableList())
@@ -86,10 +97,10 @@ public class DataMapUtils {
     }
 
     private static boolean isContainerNode(final String xpath) {
-        return !isListNode(xpath);
+        return !isListElement(xpath);
     }
 
-    private static boolean isListNode(final String xpath) {
+    private static boolean isListElement(final String xpath) {
         return xpath.endsWith("]");
     }
 }

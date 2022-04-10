@@ -1,6 +1,7 @@
 /*
  *  ============LICENSE_START=======================================================
  *  Copyright (C) 2021 Pantheon.tech
+ *  Modifications Copyright (C) 2021-2022 Nordix Foundation
  *  ================================================================================
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,11 +23,22 @@ package org.onap.cps.ncmp.rest.exceptions;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.onap.cps.ncmp.api.impl.exception.DmiRequestException;
+import org.onap.cps.ncmp.api.impl.exception.HttpClientRequestException;
+import org.onap.cps.ncmp.api.impl.exception.InvalidTopicException;
+import org.onap.cps.ncmp.api.impl.exception.NcmpException;
+import org.onap.cps.ncmp.api.impl.exception.ServerNcmpException;
 import org.onap.cps.ncmp.rest.controller.NetworkCmProxyController;
+import org.onap.cps.ncmp.rest.controller.NetworkCmProxyInventoryController;
+import org.onap.cps.ncmp.rest.model.DmiErrorMessage;
+import org.onap.cps.ncmp.rest.model.DmiErrorMessageDmiresponse;
 import org.onap.cps.ncmp.rest.model.ErrorMessage;
 import org.onap.cps.spi.exceptions.CpsException;
+import org.onap.cps.spi.exceptions.DataNodeNotFoundException;
+import org.onap.cps.spi.exceptions.DataValidationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -34,8 +46,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  * Exception handler with error message return.
  */
 @Slf4j
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
-@RestControllerAdvice(assignableTypes = {NetworkCmProxyController.class})
+@RestControllerAdvice(assignableTypes = {NetworkCmProxyController.class, NetworkCmProxyInventoryController.class})
+@NoArgsConstructor(access = AccessLevel.PACKAGE)
 public class NetworkCmProxyRestExceptionHandler {
 
     private static final String CHECK_LOGS_FOR_DETAILS = "Check logs for details.";
@@ -52,9 +64,26 @@ public class NetworkCmProxyRestExceptionHandler {
         return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, exception);
     }
 
-    @ExceptionHandler({CpsException.class})
-    public static ResponseEntity<Object> handleAnyOtherCpsExceptions(final CpsException exception) {
+    @ExceptionHandler({CpsException.class, ServerNcmpException.class})
+    public static ResponseEntity<Object> handleAnyOtherCpsExceptions(final Exception exception) {
         return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, exception);
+    }
+
+    @ExceptionHandler({HttpClientRequestException.class})
+    public static ResponseEntity<Object> handleClientRequestExceptions(
+            final HttpClientRequestException httpClientRequestException) {
+        return wrapDmiErrorResponse(HttpStatus.BAD_GATEWAY, httpClientRequestException);
+    }
+
+    @ExceptionHandler({DmiRequestException.class, DataValidationException.class, HttpMessageNotReadableException.class,
+            InvalidTopicException.class})
+    public static ResponseEntity<Object> handleDmiRequestExceptions(final Exception exception) {
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, exception);
+    }
+
+    @ExceptionHandler({DataNodeNotFoundException.class})
+    public static ResponseEntity<Object> handleNotFoundExceptions(final CpsException exception) {
+        return buildErrorResponse(HttpStatus.NOT_FOUND, exception);
     }
 
     private static ResponseEntity<Object> buildErrorResponse(final HttpStatus status, final Exception exception) {
@@ -64,8 +93,26 @@ public class NetworkCmProxyRestExceptionHandler {
         final var errorMessage = new ErrorMessage();
         errorMessage.setStatus(status.toString());
         errorMessage.setMessage(exception.getMessage());
-        errorMessage.setDetails(exception instanceof CpsException ? ((CpsException) exception).getDetails() :
-            CHECK_LOGS_FOR_DETAILS);
+        if (exception instanceof CpsException) {
+            errorMessage.setDetails(((CpsException) exception).getDetails());
+        } else if (exception instanceof NcmpException) {
+            errorMessage.setDetails(((NcmpException) exception).getDetails());
+        } else {
+            errorMessage.setDetails(CHECK_LOGS_FOR_DETAILS);
+        }
+        errorMessage.setDetails(
+                exception instanceof CpsException ? ((CpsException) exception).getDetails() : CHECK_LOGS_FOR_DETAILS);
         return new ResponseEntity<>(errorMessage, status);
+    }
+
+    private static ResponseEntity<Object> wrapDmiErrorResponse(final HttpStatus httpStatus,
+            final HttpClientRequestException httpClientRequestException) {
+        final var dmiErrorMessage = new DmiErrorMessage();
+        final var dmiErrorResponse = new DmiErrorMessageDmiresponse();
+        dmiErrorResponse.setHttpCode(httpClientRequestException.getHttpStatus());
+        dmiErrorResponse.setBody(httpClientRequestException.getDetails());
+        dmiErrorMessage.setMessage(httpClientRequestException.getMessage());
+        dmiErrorMessage.setDmiResponse(dmiErrorResponse);
+        return new ResponseEntity<>(dmiErrorMessage, httpStatus);
     }
 }

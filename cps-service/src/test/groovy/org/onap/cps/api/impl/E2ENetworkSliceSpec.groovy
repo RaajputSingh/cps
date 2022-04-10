@@ -1,7 +1,7 @@
 /*
  * ============LICENSE_START=======================================================
  * Copyright (C) 2021 Nordix Foundation.
- * Modifications Copyright (C) 2021 Bell Canada.
+ * Modifications Copyright (C) 2021-2022 Bell Canada.
  * Modifications Copyright (C) 2021 Pantheon.tech
  * ================================================================================
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,22 +37,16 @@ class E2ENetworkSliceSpec extends Specification {
     def mockDataStoreService = Mock(CpsDataPersistenceService)
     def mockCpsAdminService = Mock(CpsAdminService)
     def mockNotificationService = Mock(NotificationService)
-    def cpsModuleServiceImpl = new CpsModuleServiceImpl()
-    def cpsDataServiceImpl = new CpsDataServiceImpl()
     def mockYangTextSchemaSourceSetCache = Mock(YangTextSchemaSourceSetCache)
+    def cpsModuleServiceImpl = new CpsModuleServiceImpl(mockModuleStoreService,
+            mockYangTextSchemaSourceSetCache,mockCpsAdminService )
+    def cpsDataServiceImpl = new CpsDataServiceImpl(mockDataStoreService, mockCpsAdminService,
+            mockYangTextSchemaSourceSetCache, mockNotificationService)
 
     def dataspaceName = 'someDataspace'
     def anchorName = 'someAnchor'
     def schemaSetName = 'someSchemaSet'
-
-    def setup() {
-        cpsDataServiceImpl.cpsDataPersistenceService = mockDataStoreService
-        cpsDataServiceImpl.cpsAdminService = mockCpsAdminService
-        cpsDataServiceImpl.yangTextSchemaSourceSetCache = mockYangTextSchemaSourceSetCache
-        cpsDataServiceImpl.notificationService = mockNotificationService
-        cpsModuleServiceImpl.yangTextSchemaSourceSetCache = mockYangTextSchemaSourceSetCache
-        cpsModuleServiceImpl.cpsModulePersistenceService = mockModuleStoreService
-    }
+    def noTimestamp = null
 
     def 'E2E model can be parsed by CPS.'() {
         given: 'Valid yang resource as name-to-content map'
@@ -92,7 +86,7 @@ class E2ENetworkSliceSpec extends Specification {
                     YangTextSchemaSourceSetBuilder.of(yangResourcesNameToContentMap)
             mockModuleStoreService.getYangSchemaResources(dataspaceName, schemaSetName) >> schemaContext
         when: 'saveData method is invoked'
-            cpsDataServiceImpl.saveData(dataspaceName, anchorName, jsonData)
+            cpsDataServiceImpl.saveData(dataspaceName, anchorName, jsonData, noTimestamp)
         then: 'Parameters are validated and processing is delegated to persistence service'
             1 * mockDataStoreService.storeDataNode('someDataspace', 'someAnchor', _) >>
                     { args -> dataNodeStored = args[2]}
@@ -124,7 +118,7 @@ class E2ENetworkSliceSpec extends Specification {
             mockYangTextSchemaSourceSetCache.get('someDataspace', 'someSchemaSet') >> YangTextSchemaSourceSetBuilder.of(yangResourcesNameToContentMap)
             mockModuleStoreService.getYangSchemaResources('someDataspace', 'someSchemaSet') >> schemaContext
         when: 'saveData method is invoked'
-            cpsDataServiceImpl.saveData('someDataspace', 'someAnchor', jsonData)
+            cpsDataServiceImpl.saveData('someDataspace', 'someAnchor', jsonData, noTimestamp)
         then: 'parameters are validated and processing is delegated to persistence service'
             1 * mockDataStoreService.storeDataNode('someDataspace', 'someAnchor', _) >>
                     { args -> dataNodeStored = args[2]}

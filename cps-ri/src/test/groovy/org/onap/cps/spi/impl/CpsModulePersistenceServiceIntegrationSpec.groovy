@@ -1,7 +1,7 @@
 /*
  *  ============LICENSE_START=======================================================
- *  Copyright (C) 2021 Nordix Foundation
- *  Modifications Copyright (C) 2021 Bell Canada.
+ *  Copyright (C) 2021-2022 Nordix Foundation
+ *  Modifications Copyright (C) 2021-2022 Bell Canada.
  *  ================================================================================
  *  Licensed under the Apache License, Version 2.0 (the 'License');
  *  you may not use this file except in compliance with the License.
@@ -20,16 +20,13 @@
  */
 package org.onap.cps.spi.impl
 
-import static org.onap.cps.spi.CascadeDeleteAllowed.CASCADE_DELETE_ALLOWED
-import static org.onap.cps.spi.CascadeDeleteAllowed.CASCADE_DELETE_PROHIBITED
-
 import org.onap.cps.spi.CpsAdminPersistenceService
 import org.onap.cps.spi.CpsModulePersistenceService
 import org.onap.cps.spi.entities.YangResourceEntity
-import org.onap.cps.spi.exceptions.DataspaceNotFoundException
 import org.onap.cps.spi.exceptions.AlreadyDefinedException
-import org.onap.cps.spi.exceptions.SchemaSetInUseException
+import org.onap.cps.spi.exceptions.DataspaceNotFoundException
 import org.onap.cps.spi.exceptions.SchemaSetNotFoundException
+import org.onap.cps.spi.model.ModuleReference
 import org.onap.cps.spi.repository.AnchorRepository
 import org.onap.cps.spi.repository.SchemaSetRepository
 import org.springframework.beans.factory.annotation.Autowired
@@ -52,15 +49,28 @@ class CpsModulePersistenceServiceIntegrationSpec extends CpsPersistenceSpecBase 
     static final String SET_DATA = '/data/schemaset.sql'
     static final String EXISTING_SCHEMA_SET_NAME = SCHEMA_SET_NAME1
     static final String SCHEMA_SET_NAME_NO_ANCHORS = 'SCHEMA-SET-100'
-    static final String SCHEMA_SET_NAME_WITH_ANCHORS_AND_DATA = 'SCHEMA-SET-101'
     static final String SCHEMA_SET_NAME_NEW = 'SCHEMA-SET-NEW'
 
-    static final Long NEW_RESOURCE_ABSTRACT_ID = 0L
     static final String NEW_RESOURCE_NAME = 'some new resource'
-    static final String NEW_RESOURCE_CONTENT = 'some resource content'
-    static final String NEW_RESOURCE_CHECKSUM = '09002da02ee2683898d2c81c67f9e22cdbf8577d8c2de16c84d724e4ae44a0a6'
+    static final String NEW_RESOURCE_CONTENT = 'module stores {\n' +
+            '    yang-version 1.1;\n' +
+            '    namespace "org:onap:ccsdk:sample";\n' +
+            '\n' +
+            '    prefix book-store;\n' +
+            '\n' +
+            '    revision "2020-09-15" {\n' +
+            '        description\n' +
+            '        "Sample Model";\n' +
+            '    }' +
+            '}'
+    static final String NEW_RESOURCE_CHECKSUM = 'b13faef573ed1374139d02c40d8ce09c80ea1dc70e63e464c1ed61568d48d539'
+    static final String NEW_RESOURCE_MODULE_NAME = 'stores'
+    static final String NEW_RESOURCE_REVISION = '2020-09-15'
+    static final ModuleReference newModuleReference = ModuleReference.builder().moduleName(NEW_RESOURCE_MODULE_NAME)
+            .revision(NEW_RESOURCE_REVISION).build()
 
     def newYangResourcesNameToContentMap = [(NEW_RESOURCE_NAME):NEW_RESOURCE_CONTENT]
+
     def dataspaceEntity
 
     def setup() {
@@ -84,8 +94,25 @@ class CpsModulePersistenceServiceIntegrationSpec extends CpsPersistenceSpecBase 
         when: 'a new schemaset is stored'
             objectUnderTest.storeSchemaSet(DATASPACE_NAME, SCHEMA_SET_NAME_NEW, newYangResourcesNameToContentMap)
         then: 'the schema set is persisted correctly'
-            assertSchemaSetPersisted(DATASPACE_NAME, SCHEMA_SET_NAME_NEW, NEW_RESOURCE_ABSTRACT_ID, NEW_RESOURCE_NAME,
-                    NEW_RESOURCE_CONTENT, NEW_RESOURCE_CHECKSUM)
+            assertSchemaSetPersisted(DATASPACE_NAME, SCHEMA_SET_NAME_NEW, NEW_RESOURCE_NAME,
+                    NEW_RESOURCE_CONTENT, NEW_RESOURCE_CHECKSUM, NEW_RESOURCE_MODULE_NAME, NEW_RESOURCE_REVISION)
+    }
+
+    @Sql([CLEAR_DATA, SET_DATA])
+    def 'Store and retrieve new schema set from new modules and existing modules.'() {
+        given: 'map of new modules, a list of existing modules, module reference'
+            def mapOfNewModules = [newModule1: 'module newmodule { yang-version 1.1; revision "2021-10-12" { } }']
+            def moduleReferenceForExistingModule = new ModuleReference("test","2021-10-12")
+            def listOfExistingModulesModuleReference = [moduleReferenceForExistingModule]
+            def mapOfExistingModule = [test: 'module test { yang-version 1.1; revision "2021-10-12" { } }']
+            objectUnderTest.storeSchemaSet(DATASPACE_NAME, "someSchemaSetName", mapOfExistingModule)
+        when: 'a new schema set is created from these new modules and existing modules'
+            objectUnderTest.storeSchemaSetFromModules(DATASPACE_NAME, "newSchemaSetName" , mapOfNewModules, listOfExistingModulesModuleReference)
+        then: 'the schema set can be retrieved'
+            def expectedYangResourcesMapAfterSchemaSetHasBeenCreated = mapOfNewModules + mapOfExistingModule
+            def actualYangResourcesMapAfterSchemaSetHasBeenCreated =
+                    objectUnderTest.getYangSchemaResources(DATASPACE_NAME, "newSchemaSetName")
+        actualYangResourcesMapAfterSchemaSetHasBeenCreated == expectedYangResourcesMapAfterSchemaSetHasBeenCreated
     }
 
     @Sql([CLEAR_DATA, SET_DATA])
@@ -101,28 +128,85 @@ class CpsModulePersistenceServiceIntegrationSpec extends CpsPersistenceSpecBase 
     }
 
     @Sql([CLEAR_DATA, SET_DATA])
-    def 'Storing duplicate schema content.'() {
-        given: 'a new schema set with a resource with the same content as an existing resource'
-            def existingResourceContent = 'CONTENT-001'
-            def newYangResourcesNameToContentMap = [(NEW_RESOURCE_NAME):existingResourceContent]
-        when: 'the schema set with duplicate resource is stored'
-            objectUnderTest.storeSchemaSet(DATASPACE_NAME, SCHEMA_SET_NAME_NEW, newYangResourcesNameToContentMap)
-        then: 'the schema persisted (re)uses the existing id, name and has the same checksum'
-            def existingResourceId = 3001L
-            def existingResourceName = 'module1@2020-02-02.yang'
-            def existingResourceChecksum = 'e8bdda931099310de66532e08c3fafec391db29f55c81927b168f6aa8f81b73b'
-            assertSchemaSetPersisted(DATASPACE_NAME, SCHEMA_SET_NAME_NEW,
-                    existingResourceId, existingResourceName, existingResourceContent, existingResourceChecksum)
+    def 'Retrieving all yang resources module references for the given dataspace.'() {
+        given: 'a dataspace name'
+            def dataspaceName = 'DATASPACE-002'
+        when: 'all yang resources module references are retrieved for the given dataspace name'
+            def result = objectUnderTest.getYangResourceModuleReferences(dataspaceName)
+        then: 'the correct resources are returned'
+            result.sort() == [new ModuleReference(moduleName: 'MODULE-NAME-005', revision: 'REVISION-002'),
+                              new ModuleReference(moduleName: 'MODULE-NAME-006', revision: 'REVISION-006')]
     }
 
     @Sql([CLEAR_DATA, SET_DATA])
-    def 'Delete schema set with cascade delete prohibited but no anchors using it'() {
+    def 'Retrieving module names and revisions for the given anchor.'() {
+        given: 'a dataspace name and anchor name'
+            def dataspaceName = 'DATASPACE-001'
+            def anchorName = 'ANCHOR1'
+        when: 'all yang resources module references are retrieved for the given anchor'
+            def result = objectUnderTest.getYangResourceModuleReferences(dataspaceName, anchorName)
+        then: 'the correct module names and revisions are returned'
+            result.sort() == [ new ModuleReference(moduleName: 'MODULE-NAME-003', revision: 'REVISION-002'),
+                              new ModuleReference(moduleName: 'MODULE-NAME-004', revision: 'REVISION-004')]
+    }
+
+    @Sql([CLEAR_DATA, SET_DATA])
+    def 'Storing duplicate schema content.'() {
+        given: 'a new schema set with a resource with the same content as an existing resource'
+            def existingResourceContent = 'module test { yang-version 1.1; revision "2020-09-15"; }'
+            def newYangResourcesNameToContentMap = [(NEW_RESOURCE_NAME):existingResourceContent]
+        when: 'the schema set with duplicate resource is stored'
+            objectUnderTest.storeSchemaSet(DATASPACE_NAME, SCHEMA_SET_NAME_NEW, newYangResourcesNameToContentMap)
+        then: 'the schema persisted (re)uses the existing name and has the same checksum'
+            def existingResourceName = 'module1@2020-02-02.yang'
+            def existingResourceChecksum = 'bea1afcc3d1517e7bf8cae151b3b6bfbd46db77a81754acdcb776a50368efa0a'
+            def existingResourceModelName = 'test'
+            def existingResourceRevision = '2020-09-15'
+            assertSchemaSetPersisted(DATASPACE_NAME, SCHEMA_SET_NAME_NEW, existingResourceName,
+                    existingResourceContent, existingResourceChecksum,
+                    existingResourceModelName, existingResourceRevision)
+    }
+
+    @Sql([CLEAR_DATA, SET_DATA])
+    def 'Delete schema set'() {
         when: 'a schema set is deleted with cascade-prohibited option'
-            objectUnderTest.deleteSchemaSet(DATASPACE_NAME, SCHEMA_SET_NAME_NO_ANCHORS,
-                    CASCADE_DELETE_PROHIBITED)
+            objectUnderTest.deleteSchemaSet(DATASPACE_NAME, SCHEMA_SET_NAME_NO_ANCHORS)
         then: 'the schema set has been deleted'
             schemaSetRepository.findByDataspaceAndName(dataspaceEntity, SCHEMA_SET_NAME_NO_ANCHORS).isPresent() == false
-        and: 'any orphaned (not used by any schema set anymore) yang resources are deleted'
+    }
+
+    @Sql([CLEAR_DATA, SET_DATA])
+    def 'Identifying new module references where #scenario'() {
+        when: 'identifyNewModuleReferences is called'
+            def result = objectUnderTest.identifyNewModuleReferences(moduleReferences)
+        then: 'the correct module reference collection is returned'
+            assert result == expectedResult
+        where: 'the following data is used'
+            scenario                              | moduleReferences                                                                                  || expectedResult
+            'new module references exist'         | toModuleReference([['some module 1' : 'some revision 1'], ['some module 2' : 'some revision 2']]) || toModuleReference([['some module 1' : 'some revision 1'], ['some module 2' : 'some revision 2']])
+            'no new module references exist'      | []                                                                                                || []
+            'module references collection is null'| null                                                                                              || []
+    }
+
+    @Sql([CLEAR_DATA, SET_DATA])
+    def 'Delete schema set error scenario: #scenario.'() {
+        when: 'attempt to delete a schema set where #scenario'
+            objectUnderTest.deleteSchemaSet(dataspaceName, schemaSetName)
+        then: 'an #expectedException is thrown'
+            thrown(expectedException)
+        where: 'the following data is used'
+            scenario                                   | dataspaceName  | schemaSetName                         || expectedException
+            'dataspace does not exist'                 | 'unknown'      | 'not-relevant'                        || DataspaceNotFoundException
+            'schema set does not exists'               | DATASPACE_NAME | 'unknown'                             || SchemaSetNotFoundException
+    }
+
+    @Sql([CLEAR_DATA, SET_DATA])
+    def 'Delete only orphan Yang Resources'() {
+        given: 'a schema set is deleted and and yang resource is not used anymore'
+            objectUnderTest.deleteSchemaSet(DATASPACE_NAME, SCHEMA_SET_NAME_NO_ANCHORS)
+        when: 'orphan yang resources are deleted'
+            objectUnderTest.deleteUnusedYangResourceModules()
+        then: 'any orphaned (not used by any schema set anymore) yang resources are deleted'
             def orphanedResourceId = 3100L
             yangResourceRepository.findById(orphanedResourceId).isPresent() == false
         and: 'any shared (still in use by other schema set) yang resources still persists'
@@ -130,44 +214,13 @@ class CpsModulePersistenceServiceIntegrationSpec extends CpsPersistenceSpecBase 
             yangResourceRepository.findById(sharedResourceId).isPresent()
     }
 
-    @Sql([CLEAR_DATA, SET_DATA])
-    def 'Delete schema set with cascade allowed.'() {
-        when: 'a schema set is deleted with cascade-allowed option'
-            objectUnderTest.deleteSchemaSet(DATASPACE_NAME, SCHEMA_SET_NAME_WITH_ANCHORS_AND_DATA,
-                    CASCADE_DELETE_ALLOWED)
-        then: 'the schema set has been deleted'
-            schemaSetRepository
-                    .findByDataspaceAndName(dataspaceEntity, SCHEMA_SET_NAME_WITH_ANCHORS_AND_DATA).isPresent() == false
-        and: 'the associated anchors are removed'
-            def associatedAnchorsIds = [ 6001, 6002 ]
-            associatedAnchorsIds.each {anchorRepository.findById(it).isPresent() == false }
-        and: 'the fragment(s) under those anchors are removed'
-            def fragmentUnderAnchor1Id = 7001L
-            fragmentRepository.findById(fragmentUnderAnchor1Id).isPresent() == false
-        and: 'the shared resources still persist'
-            def sharedResourceIds = [ 3003L, 3004L ]
-            sharedResourceIds.each {yangResourceRepository.findById(it).isPresent() }
-    }
-
-    @Sql([CLEAR_DATA, SET_DATA])
-    def 'Delete schema set error scenario: #scenario.'() {
-        when: 'attempt to delete a schema set where #scenario'
-            objectUnderTest.deleteSchemaSet(dataspaceName, schemaSetName, CASCADE_DELETE_PROHIBITED)
-        then: 'an #expectedException is thrown'
-            thrown(expectedException)
-        where: 'the following data is used'
-            scenario                                   | dataspaceName  | schemaSetName                         || expectedException
-            'dataspace does not exist'                 | 'unknown'      | 'not-relevant'                        || DataspaceNotFoundException
-            'schema set does not exists'               | DATASPACE_NAME | 'unknown'                             || SchemaSetNotFoundException
-            'cascade prohibited but schema set in use' | DATASPACE_NAME | SCHEMA_SET_NAME_WITH_ANCHORS_AND_DATA || SchemaSetInUseException
-    }
-
     def assertSchemaSetPersisted(expectedDataspaceName,
-                             expectedSchemaSetName,
-                             expectedYangResourceId,
-                             expectedYangResourceName,
-                             expectedYangResourceContent,
-                             expectedYangResourceChecksum) {
+                                 expectedSchemaSetName,
+                                 expectedYangResourceName,
+                                 expectedYangResourceContent,
+                                 expectedYangResourceChecksum,
+                                 expectedYangResourceModuleName,
+                                 expectedYangResourceRevision) {
         // assert the schema set is persisted
         def schemaSetEntity = schemaSetRepository
                 .findByDataspaceAndName(dataspaceEntity, expectedSchemaSetName).orElseThrow()
@@ -181,13 +234,20 @@ class CpsModulePersistenceServiceIntegrationSpec extends CpsPersistenceSpecBase 
         // assert the attached yang resource content
         YangResourceEntity yangResourceEntity = yangResourceEntities.iterator().next()
         assert yangResourceEntity.id != null
-        if (expectedYangResourceId != NEW_RESOURCE_ABSTRACT_ID) {
-            // existing resource with known id
-            assert yangResourceEntity.id == expectedYangResourceId
-        }
         yangResourceEntity.name == expectedYangResourceName
         yangResourceEntity.content == expectedYangResourceContent
         yangResourceEntity.checksum == expectedYangResourceChecksum
+        yangResourceEntity.moduleName == expectedYangResourceModuleName
+        yangResourceEntity.revision == expectedYangResourceRevision
+    }
+
+    def toModuleReference(moduleReferenceAsMap) {
+        def moduleReferences = [].withDefault { [:] }
+        moduleReferenceAsMap.forEach(property ->
+            property.forEach((moduleName, revision) -> {
+                moduleReferences.add(new ModuleReference('moduleName' : moduleName, 'revision' : revision))
+            }))
+        return moduleReferences
     }
 
 }

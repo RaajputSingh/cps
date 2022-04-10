@@ -1,8 +1,9 @@
 /*
  *  ============LICENSE_START=======================================================
  *  Copyright (C) 2021 highstreet technologies GmbH
- *  Modifications Copyright (C) 2021 Nordix Foundation
+ *  Modifications Copyright (C) 2021-2022 Nordix Foundation
  *  Modifications Copyright (C) 2021 Pantheon.tech
+ *  Modifications Copyright (C) 2021-2022 Bell Canada
  *  ================================================================================
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,64 +23,336 @@
 
 package org.onap.cps.ncmp.api.impl;
 
-import java.util.Collection;
-import org.onap.cps.api.CpsDataService;
-import org.onap.cps.api.CpsQueryService;
-import org.onap.cps.ncmp.api.NetworkCmProxyDataService;
-import org.onap.cps.spi.FetchDescendantsOption;
-import org.onap.cps.spi.model.DataNode;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
+import static org.onap.cps.ncmp.api.impl.constants.DmiRegistryConstants.NCMP_DATASPACE_NAME;
+import static org.onap.cps.ncmp.api.impl.constants.DmiRegistryConstants.NCMP_DMI_REGISTRY_ANCHOR;
+import static org.onap.cps.ncmp.api.impl.constants.DmiRegistryConstants.NCMP_DMI_REGISTRY_PARENT;
+import static org.onap.cps.ncmp.api.impl.constants.DmiRegistryConstants.NFP_OPERATIONAL_DATASTORE_DATASPACE_NAME;
+import static org.onap.cps.ncmp.api.impl.constants.DmiRegistryConstants.NO_TIMESTAMP;
+import static org.onap.cps.ncmp.api.impl.operations.DmiRequestBody.OperationEnum;
+import static org.onap.cps.spi.CascadeDeleteAllowed.CASCADE_DELETE_ALLOWED;
 
+import com.google.common.base.Strings;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.onap.cps.api.CpsAdminService;
+import org.onap.cps.api.CpsDataService;
+import org.onap.cps.api.CpsModuleService;
+import org.onap.cps.ncmp.api.NetworkCmProxyDataService;
+import org.onap.cps.ncmp.api.impl.exception.HttpClientRequestException;
+import org.onap.cps.ncmp.api.impl.operations.DmiDataOperations;
+import org.onap.cps.ncmp.api.impl.operations.DmiModelOperations;
+import org.onap.cps.ncmp.api.impl.operations.DmiOperations;
+import org.onap.cps.ncmp.api.impl.operations.YangModelCmHandleRetriever;
+import org.onap.cps.ncmp.api.impl.yangmodels.YangModelCmHandle;
+import org.onap.cps.ncmp.api.models.CmHandleQueryApiParameters;
+import org.onap.cps.ncmp.api.models.CmHandleRegistrationResponse;
+import org.onap.cps.ncmp.api.models.CmHandleRegistrationResponse.RegistrationError;
+import org.onap.cps.ncmp.api.models.DmiPluginRegistration;
+import org.onap.cps.ncmp.api.models.DmiPluginRegistrationResponse;
+import org.onap.cps.ncmp.api.models.NcmpServiceCmHandle;
+import org.onap.cps.spi.exceptions.AlreadyDefinedException;
+import org.onap.cps.spi.exceptions.DataNodeNotFoundException;
+import org.onap.cps.spi.exceptions.DataValidationException;
+import org.onap.cps.spi.exceptions.SchemaSetNotFoundException;
+import org.onap.cps.spi.model.ModuleReference;
+import org.onap.cps.utils.CpsValidator;
+import org.onap.cps.utils.JsonObjectMapper;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class NetworkCmProxyDataServiceImpl implements NetworkCmProxyDataService {
 
-    private static final String NF_PROXY_DATASPACE_NAME = "NFP-Operational";
+    private final CpsDataService cpsDataService;
 
-    @Autowired
-    private CpsDataService cpsDataService;
+    private final JsonObjectMapper jsonObjectMapper;
 
-    @Autowired
-    private CpsQueryService cpsQueryService;
+    private final DmiDataOperations dmiDataOperations;
 
-    private String getDataspaceName() {
-        return NF_PROXY_DATASPACE_NAME;
+    private final DmiModelOperations dmiModelOperations;
+
+    private final CpsModuleService cpsModuleService;
+
+    private final CpsAdminService cpsAdminService;
+
+    private final NetworkCmProxyDataServicePropertyHandler networkCmProxyDataServicePropertyHandler;
+
+    private final YangModelCmHandleRetriever yangModelCmHandleRetriever;
+
+    @Override
+    public DmiPluginRegistrationResponse updateDmiRegistrationAndSyncModule(
+        final DmiPluginRegistration dmiPluginRegistration) {
+        dmiPluginRegistration.validateDmiPluginRegistration();
+        final var dmiPluginRegistrationResponse = new DmiPluginRegistrationResponse();
+        dmiPluginRegistrationResponse.setRemovedCmHandles(
+            parseAndRemoveCmHandlesInDmiRegistration(dmiPluginRegistration.getRemovedCmHandles()));
+        if (!dmiPluginRegistration.getCreatedCmHandles().isEmpty()) {
+            dmiPluginRegistrationResponse.setCreatedCmHandles(
+                parseAndCreateCmHandlesInDmiRegistrationAndSyncModules(dmiPluginRegistration));
+        }
+        if (!dmiPluginRegistration.getUpdatedCmHandles().isEmpty()) {
+            dmiPluginRegistrationResponse.setUpdatedCmHandles(
+                networkCmProxyDataServicePropertyHandler
+                    .updateCmHandleProperties(dmiPluginRegistration.getUpdatedCmHandles()));
+        }
+        return dmiPluginRegistrationResponse;
     }
 
     @Override
-    public DataNode getDataNode(final String cmHandle, final String xpath,
-        final FetchDescendantsOption fetchDescendantsOption) {
-        return cpsDataService.getDataNode(getDataspaceName(), cmHandle, xpath, fetchDescendantsOption);
+    public Object getResourceDataOperationalForCmHandle(final String cmHandleId,
+                                                        final String resourceIdentifier,
+                                                        final String optionsParamInQuery,
+                                                        final String topicParamInQuery,
+                                                        final String requestId) {
+        CpsValidator.validateNameCharacters(cmHandleId);
+        return getResourceDataResponse(cmHandleId, resourceIdentifier,
+                DmiOperations.DataStoreEnum.PASSTHROUGH_OPERATIONAL, optionsParamInQuery, topicParamInQuery, requestId);
     }
 
     @Override
-    public Collection<DataNode> queryDataNodes(final String cmHandle, final String cpsPath,
-        final FetchDescendantsOption fetchDescendantsOption) {
-        return cpsQueryService.queryDataNodes(getDataspaceName(), cmHandle, cpsPath, fetchDescendantsOption);
+    public Object getResourceDataPassThroughRunningForCmHandle(final String cmHandleId,
+                                                               final String resourceIdentifier,
+                                                               final String optionsParamInQuery,
+                                                               final String topicParamInQuery,
+                                                               final String requestId) {
+        CpsValidator.validateNameCharacters(cmHandleId);
+        return getResourceDataResponse(cmHandleId, resourceIdentifier,
+                DmiOperations.DataStoreEnum.PASSTHROUGH_RUNNING, optionsParamInQuery, topicParamInQuery, requestId);
     }
 
     @Override
-    public void createDataNode(final String cmHandle, final String parentNodeXpath, final String jsonData) {
-        if (!StringUtils.hasText(parentNodeXpath) || "/".equals(parentNodeXpath)) {
-            cpsDataService.saveData(getDataspaceName(), cmHandle, jsonData);
-        } else {
-            cpsDataService.saveData(getDataspaceName(), cmHandle, parentNodeXpath, jsonData);
+    public Object writeResourceDataPassThroughRunningForCmHandle(final String cmHandleId,
+                                                               final String resourceIdentifier,
+                                                               final OperationEnum operation,
+                                                               final String requestData,
+                                                               final String dataType) {
+        CpsValidator.validateNameCharacters(cmHandleId);
+        return handleResponse(
+                dmiDataOperations.writeResourceDataPassThroughRunningFromDmi(cmHandleId, resourceIdentifier, operation,
+                        requestData, dataType), operation);
+    }
+
+
+    @Override
+    public Collection<ModuleReference> getYangResourcesModuleReferences(final String cmHandleId) {
+        CpsValidator.validateNameCharacters(cmHandleId);
+        return cpsModuleService.getYangResourcesModuleReferences(NFP_OPERATIONAL_DATASTORE_DATASPACE_NAME, cmHandleId);
+    }
+
+    /**
+     * Retrieve cm handle identifiers for the given list of module names.
+     *
+     * @param moduleNames module names.
+     * @return a collection of anchor identifiers
+     */
+    @Override
+    public Collection<String> executeCmHandleHasAllModulesSearch(final Collection<String> moduleNames) {
+        return cpsAdminService.queryAnchorNames(NFP_OPERATIONAL_DATASTORE_DATASPACE_NAME, moduleNames);
+    }
+
+    @Override
+    public Set<String> queryCmHandles(final CmHandleQueryApiParameters cmHandleQueryApiParameters) {
+
+        cmHandleQueryApiParameters.getPublicProperties().forEach((key, value) -> {
+            if (Strings.isNullOrEmpty(key)) {
+                throw new DataValidationException("Invalid Query Parameter.",
+                    "Missing property name - please supply a valid name.");
+            }
+        });
+
+        return cpsAdminService.queryCmHandles(jsonObjectMapper.convertToValueType(cmHandleQueryApiParameters,
+                org.onap.cps.spi.model.CmHandleQueryParameters.class));
+    }
+
+    /**
+     * Retrieve cm handle details for a given cm handle.
+     *
+     * @param cmHandleId cm handle identifier
+     * @return cm handle details
+     */
+    @Override
+    public NcmpServiceCmHandle getNcmpServiceCmHandle(final String cmHandleId) {
+        CpsValidator.validateNameCharacters(cmHandleId);
+        final NcmpServiceCmHandle ncmpServiceCmHandle = new NcmpServiceCmHandle();
+        final YangModelCmHandle yangModelCmHandle =
+            yangModelCmHandleRetriever.getDmiServiceNamesAndProperties(cmHandleId);
+        final List<YangModelCmHandle.Property> dmiProperties = yangModelCmHandle.getDmiProperties();
+        final List<YangModelCmHandle.Property> publicProperties = yangModelCmHandle.getPublicProperties();
+        ncmpServiceCmHandle.setCmHandleId(yangModelCmHandle.getId());
+        setDmiProperties(dmiProperties, ncmpServiceCmHandle);
+        setPublicProperties(publicProperties, ncmpServiceCmHandle);
+        return ncmpServiceCmHandle;
+    }
+
+    /**
+     * THis method registers a cm handle and initiates modules sync.
+     *
+     * @param dmiPluginRegistration dmi plugin registration information.
+     * @return cm-handle registration response for create cm-handle requests.
+     */
+    public List<CmHandleRegistrationResponse> parseAndCreateCmHandlesInDmiRegistrationAndSyncModules(
+        final DmiPluginRegistration dmiPluginRegistration) {
+        List<CmHandleRegistrationResponse> cmHandleRegistrationResponses = new ArrayList<>();
+        try {
+            cmHandleRegistrationResponses = dmiPluginRegistration.getCreatedCmHandles().stream()
+                .map(cmHandle ->
+                    YangModelCmHandle.toYangModelCmHandle(
+                        dmiPluginRegistration.getDmiPlugin(),
+                        dmiPluginRegistration.getDmiDataPlugin(),
+                        dmiPluginRegistration.getDmiModelPlugin(), cmHandle)
+                )
+                .map(this::registerAndSyncNewCmHandle)
+                .collect(Collectors.toList());
+        } catch (final DataValidationException dataValidationException) {
+            cmHandleRegistrationResponses.add(CmHandleRegistrationResponse.createFailureResponse(dmiPluginRegistration
+                    .getCreatedCmHandles().stream()
+                    .map(NcmpServiceCmHandle::getCmHandleId).findFirst().orElse(null),
+                RegistrationError.CM_HANDLE_INVALID_ID));
+        }
+        return cmHandleRegistrationResponses;
+    }
+
+    protected void syncModulesAndCreateAnchor(final YangModelCmHandle yangModelCmHandle) {
+        syncAndCreateSchemaSet(yangModelCmHandle);
+        createAnchor(yangModelCmHandle);
+    }
+
+    protected List<CmHandleRegistrationResponse> parseAndRemoveCmHandlesInDmiRegistration(
+        final List<String> tobeRemovedCmHandles) {
+        final List<CmHandleRegistrationResponse> cmHandleRegistrationResponses =
+            new ArrayList<>(tobeRemovedCmHandles.size());
+        for (final String cmHandle : tobeRemovedCmHandles) {
+            try {
+                CpsValidator.validateNameCharacters(cmHandle);
+                deleteSchemaSetWithCascade(cmHandle);
+                cpsDataService.deleteListOrListElement(NCMP_DATASPACE_NAME, NCMP_DMI_REGISTRY_ANCHOR,
+                    "/dmi-registry/cm-handles[@id='" + cmHandle + "']", NO_TIMESTAMP);
+                cmHandleRegistrationResponses.add(CmHandleRegistrationResponse.createSuccessResponse(cmHandle));
+            } catch (final DataNodeNotFoundException dataNodeNotFoundException) {
+                log.error("Unable to find dataNode for cmHandleId : {} , caused by : {}",
+                    cmHandle, dataNodeNotFoundException.getMessage());
+                cmHandleRegistrationResponses.add(CmHandleRegistrationResponse
+                    .createFailureResponse(cmHandle, RegistrationError.CM_HANDLE_DOES_NOT_EXIST));
+            } catch (final DataValidationException dataValidationException) {
+                log.error("Unable to de-register cm-handle id: {}, caused by: {}",
+                    cmHandle, dataValidationException.getMessage());
+                cmHandleRegistrationResponses.add(CmHandleRegistrationResponse
+                    .createFailureResponse(cmHandle, RegistrationError.CM_HANDLE_INVALID_ID));
+            } catch (final Exception exception) {
+                log.error("Unable to de-register cm-handle id : {} , caused by : {}",
+                    cmHandle, exception.getMessage());
+                cmHandleRegistrationResponses.add(
+                    CmHandleRegistrationResponse.createFailureResponse(cmHandle, exception));
+            }
+        }
+        return cmHandleRegistrationResponses;
+    }
+
+    private void deleteSchemaSetWithCascade(final String schemaSetName) {
+        try {
+            cpsModuleService.deleteSchemaSet(NFP_OPERATIONAL_DATASTORE_DATASPACE_NAME, schemaSetName,
+                CASCADE_DELETE_ALLOWED);
+        } catch (final SchemaSetNotFoundException schemaSetNotFoundException) {
+            log.warn("Schema set {} does not exist or already deleted", schemaSetName);
         }
     }
 
-    @Override
-    public void addListNodeElements(final String cmHandle, final String parentNodeXpath, final String jsonData) {
-        cpsDataService.saveListNodeData(getDataspaceName(), cmHandle, parentNodeXpath, jsonData);
+    private void syncAndCreateSchemaSet(final YangModelCmHandle yangModelCmHandle) {
+        final Collection<ModuleReference> moduleReferencesFromCmHandle =
+            dmiModelOperations.getModuleReferences(yangModelCmHandle);
+
+        final Collection<ModuleReference> identifiedNewModuleReferencesFromCmHandle = cpsModuleService
+            .identifyNewModuleReferences(moduleReferencesFromCmHandle);
+
+        final Collection<ModuleReference> existingModuleReferencesFromCmHandle =
+            moduleReferencesFromCmHandle.stream().filter(moduleReferenceFromCmHandle ->
+                !identifiedNewModuleReferencesFromCmHandle.contains(moduleReferenceFromCmHandle)
+            ).collect(Collectors.toList());
+
+        final Map<String, String> newModuleNameToContentMap;
+        if (identifiedNewModuleReferencesFromCmHandle.isEmpty()) {
+            newModuleNameToContentMap = new HashMap<>();
+        } else {
+            newModuleNameToContentMap = dmiModelOperations.getNewYangResourcesFromDmi(yangModelCmHandle,
+                identifiedNewModuleReferencesFromCmHandle);
+        }
+        cpsModuleService
+            .createSchemaSetFromModules(NFP_OPERATIONAL_DATASTORE_DATASPACE_NAME, yangModelCmHandle.getId(),
+                newModuleNameToContentMap, existingModuleReferencesFromCmHandle);
     }
 
-    @Override
-    public void updateNodeLeaves(final String cmHandle, final String parentNodeXpath, final String jsonData) {
-        cpsDataService.updateNodeLeaves(getDataspaceName(), cmHandle, parentNodeXpath, jsonData);
+    private void createAnchor(final YangModelCmHandle yangModelCmHandle) {
+        cpsAdminService.createAnchor(NFP_OPERATIONAL_DATASTORE_DATASPACE_NAME, yangModelCmHandle.getId(),
+            yangModelCmHandle.getId());
     }
 
-    @Override
-    public void replaceNodeTree(final String cmHandle, final String parentNodeXpath, final String jsonData) {
-        cpsDataService.replaceNodeTree(getDataspaceName(), cmHandle, parentNodeXpath, jsonData);
+    private Object getResourceDataResponse(final String cmHandleId,
+                                           final String resourceIdentifier,
+                                           final DmiOperations.DataStoreEnum dataStore,
+                                           final String optionsParamInQuery,
+                                           final String topicParamInQuery,
+                                           final String requestId) {
+        final ResponseEntity<?> responseEntity = dmiDataOperations.getResourceDataFromDmi(
+                cmHandleId, resourceIdentifier, optionsParamInQuery, dataStore, requestId, topicParamInQuery);
+        return handleResponse(responseEntity, OperationEnum.READ);
     }
+
+    private void setDmiProperties(final List<YangModelCmHandle.Property> dmiProperties,
+                                  final NcmpServiceCmHandle ncmpServiceCmHandle) {
+        final Map<String, String> dmiPropertiesMap = new LinkedHashMap<>(dmiProperties.size());
+        asPropertiesMap(dmiProperties, dmiPropertiesMap);
+        ncmpServiceCmHandle.setDmiProperties(dmiPropertiesMap);
+    }
+
+    private void setPublicProperties(final List<YangModelCmHandle.Property> publicProperties,
+                                     final NcmpServiceCmHandle ncmpServiceCmHandle) {
+        final Map<String, String> publicPropertiesMap = new LinkedHashMap<>();
+        asPropertiesMap(publicProperties, publicPropertiesMap);
+        ncmpServiceCmHandle.setPublicProperties(publicPropertiesMap);
+    }
+
+    private void asPropertiesMap(final List<YangModelCmHandle.Property> properties,
+                                 final Map<String, String> propertiesMap) {
+        for (final YangModelCmHandle.Property property: properties) {
+            propertiesMap.put(property.getName(), property.getValue());
+        }
+    }
+
+
+    private CmHandleRegistrationResponse registerAndSyncNewCmHandle(final YangModelCmHandle yangModelCmHandle) {
+        try {
+            final String cmHandleJsonData = String.format("{\"cm-handles\":[%s]}",
+                jsonObjectMapper.asJsonString(yangModelCmHandle));
+            cpsDataService.saveListElements(NCMP_DATASPACE_NAME, NCMP_DMI_REGISTRY_ANCHOR, NCMP_DMI_REGISTRY_PARENT,
+                cmHandleJsonData, NO_TIMESTAMP);
+            syncModulesAndCreateAnchor(yangModelCmHandle);
+            return CmHandleRegistrationResponse.createSuccessResponse(yangModelCmHandle.getId());
+        } catch (final AlreadyDefinedException alreadyDefinedException) {
+            return CmHandleRegistrationResponse.createFailureResponse(
+                yangModelCmHandle.getId(), RegistrationError.CM_HANDLE_ALREADY_EXIST);
+        } catch (final Exception exception) {
+            return CmHandleRegistrationResponse.createFailureResponse(yangModelCmHandle.getId(), exception);
+        }
+    }
+
+    private static Object handleResponse(final ResponseEntity<?> responseEntity, final OperationEnum operation) {
+        if (responseEntity.getStatusCode().is2xxSuccessful()) {
+            return responseEntity.getBody();
+        } else {
+            final String exceptionMessage = "Unable to " + operation.toString() + " resource data.";
+            throw new HttpClientRequestException(exceptionMessage, (String) responseEntity.getBody(),
+                responseEntity.getStatusCodeValue());
+        }
+    }
+
 }

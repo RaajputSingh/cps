@@ -1,7 +1,7 @@
 /*
  *  ============LICENSE_START=======================================================
- *  Copyright (C) 2021 Nordix Foundation
- *  Modifications Copyright (C) 2021 Bell Canada.
+ *  Copyright (C) 2021-2022 Nordix Foundation
+ *  Modifications Copyright (C) 2021-2022 Bell Canada.
  *  Modifications Copyright (C) 2021 Pantheon.tech
  *  ================================================================================
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,11 +26,8 @@ import static org.onap.cps.spi.FetchDescendantsOption.INCLUDE_ALL_DESCENDANTS
 import static org.onap.cps.spi.FetchDescendantsOption.OMIT_DESCENDANTS
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 
-import com.google.gson.Gson
-import org.modelmapper.ModelMapper
-import org.onap.cps.api.CpsAdminService
-import org.onap.cps.api.CpsDataService
-import org.onap.cps.api.CpsModuleService
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.onap.cps.utils.JsonObjectMapper
 import org.onap.cps.api.CpsQueryService
 import org.onap.cps.spi.model.DataNodeBuilder
 import org.spockframework.spring.SpringBean
@@ -41,23 +38,14 @@ import org.springframework.http.HttpStatus
 import org.springframework.test.web.servlet.MockMvc
 import spock.lang.Specification
 
-@WebMvcTest
+@WebMvcTest(QueryRestController)
 class QueryRestControllerSpec extends Specification {
-
-    @SpringBean
-    CpsDataService mockCpsDataService = Mock()
-
-    @SpringBean
-    CpsModuleService mockCpsModuleService = Mock()
-
-    @SpringBean
-    CpsAdminService mockCpsAdminService = Mock()
 
     @SpringBean
     CpsQueryService mockCpsQueryService = Mock()
 
     @SpringBean
-    ModelMapper modelMapper = Mock()
+    JsonObjectMapper jsonObjectMapper = new JsonObjectMapper(new ObjectMapper())
 
     @Autowired
     MockMvc mvc
@@ -67,11 +55,12 @@ class QueryRestControllerSpec extends Specification {
 
     def 'Query data node by cps path for the given dataspace and anchor with #scenario.'() {
         given: 'service method returns a list containing a data node'
-            def dataNode = new DataNodeBuilder().withXpath('/xpath').build()
+             def dataNode1 = new DataNodeBuilder().withXpath('/xpath')
+                    .withLeaves([leaf: 'value', leafList: ['leaveListElement1', 'leaveListElement2']]).build()
             def dataspaceName = 'my_dataspace'
             def anchorName = 'my_anchor'
             def cpsPath = 'some cps-path'
-            mockCpsQueryService.queryDataNodes(dataspaceName, anchorName, cpsPath, expectedCpsDataServiceOption) >> [dataNode]
+            mockCpsQueryService.queryDataNodes(dataspaceName, anchorName, cpsPath, expectedCpsDataServiceOption) >> [dataNode1, dataNode1]
         and: 'the query endpoint'
             def dataNodeEndpoint = "$basePath/v1/dataspaces/$dataspaceName/anchors/$anchorName/nodes/query"
         when: 'query data nodes API is invoked'
@@ -83,7 +72,7 @@ class QueryRestControllerSpec extends Specification {
                             .andReturn().response
         then: 'the response contains the the datanode in json format'
             response.status == HttpStatus.OK.value()
-            response.getContentAsString().contains(new Gson().toJson(dataNode))
+            response.getContentAsString().contains('{"xpath":{"leaf":"value","leafList":["leaveListElement1","leaveListElement2"]}}')
         where: 'the following options for include descendants are provided in the request'
             scenario                    | includeDescendantsOption || expectedCpsDataServiceOption
             'no descendants by default' | ''                       || OMIT_DESCENDANTS

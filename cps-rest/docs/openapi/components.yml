@@ -1,0 +1,285 @@
+# ============LICENSE_START=======================================================
+# Copyright (c) 2021-2022 Bell Canada.
+# Modifications Copyright (C) 2021-2022 Nordix Foundation
+# ================================================================================
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+# ============LICENSE_END=========================================================
+
+components:
+  schemas:
+
+    AnchorDetails:
+      type: object
+      title: Anchor details by anchor Name
+      properties:
+        name:
+          type: string
+          example: my-anchor
+        dataspaceName:
+          type: string
+          example: my-dataspace
+        schemaSetName:
+          type: string
+          example: my-schema-set
+
+    ErrorMessage:
+      type: object
+      title: Error
+      properties:
+        status:
+          type: string
+        message:
+          type: string
+        details:
+          type: string
+
+    MultipartFile:
+      type: object
+      required:
+        - file
+      properties:
+        file:
+          type: string
+          description: multipartFile
+          format: binary
+          example:  'https://github.com/onap/cps/blob/master/cps-service/src/test/resources/bookstore.yang'
+
+    ModuleReferences:
+      type: object
+      title: Module reference object
+      properties:
+        name:
+          type: string
+          example: my-module-reference-name
+        namespace:
+          type: string
+          example: my-module-reference-namespace
+        revision:
+          type: string
+          example: my-module-reference-revision
+
+    SchemaSetDetails:
+      type: object
+      title: Schema set details by dataspace and schemasetName
+      required:
+        - "moduleReferences"
+      properties:
+        dataspaceName:
+          type: string
+          example: my-dataspace
+        moduleReferences:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModuleReferences'
+        name:
+          type: string
+          example: my-schema-set
+
+  examples:
+    dataSample:
+      value:
+        test:bookstore:
+          bookstore-name: Chapters
+          categories:
+            - code: 01
+              name: SciFi
+            - code: 02
+              name: kids
+
+  parameters:
+    dataspaceNameInQuery:
+      name: dataspace-name
+      in: query
+      description: dataspace-name
+      required: true
+      schema:
+        type: string
+        example: my-dataspace
+    dataspaceNameInPath:
+      name: dataspace-name
+      in: path
+      description: dataspace-name
+      required: true
+      schema:
+        type: string
+        example: my-dataspace
+    anchorNameInPath:
+      name: anchor-name
+      in: path
+      description: anchor-name
+      required: true
+      schema:
+        type: string
+        example: my-anchor
+    schemaSetNameInQuery:
+      name: schema-set-name
+      in: query
+      description: schema-set-name
+      required: true
+      schema:
+        type: string
+        example: my-schema-set
+    schemaSetNameInPath:
+      name: schema-set-name
+      in: path
+      description: schema-set-name
+      required: true
+      schema:
+        type: string
+        example: my-schema-set
+    anchorNameInQuery:
+      name: anchor-name
+      in: query
+      description: anchor-name
+      required: true
+      schema:
+        type: string
+        example: my-anchor
+    xpathInQuery:
+      name: xpath
+      in: query
+      description: For more details on xpath, please refer https://docs.onap.org/projects/onap-cps/en/latest/cps-path.html
+      required: false
+      schema:
+        type: string
+        default: /
+      examples:
+        container xpath:
+          value: /shops/bookstore
+        list attributes xpath:
+          value: /shops/bookstore/categories[@code=1]
+    requiredXpathInQuery:
+      name: xpath
+      in: query
+      description: For more details on xpath, please refer https://docs.onap.org/projects/onap-cps/en/latest/cps-path.html
+      required: true
+      schema:
+        type: string
+      examples:
+        container xpath:
+          value: /shops/bookstore
+        list attributes xpath:
+          value: /shops/bookstore/categories[@code=1]
+    cpsPathInQuery:
+      name: cps-path
+      in: query
+      description: For more details on cps path, please refer https://docs.onap.org/projects/onap-cps/en/latest/cps-path.html
+      required: false
+      schema:
+        type: string
+        default: /
+      examples:
+        container cps path:
+          value: //bookstore
+        list attributes cps path:
+          value: //categories[@code=1]
+    includeDescendantsOptionInQuery:
+      name: include-descendants
+      in: query
+      description: include-descendants
+      required: false
+      schema:
+        type: boolean
+        default: false
+        example: false
+    observedTimestampInQuery:
+      name: observed-timestamp
+      in: query
+      description: observed-timestamp
+      required: false
+      schema:
+        type: string
+        example: '2021-03-21T00:10:34.030-0100'
+
+  responses:
+    NotFound:
+      description: The specified resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+          example:
+            status: 404
+            message: Resource Not Found
+            details: The requested resource is not found
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+          example:
+            status: 401
+            message: Unauthorized request
+            details: This request is unauthorized
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+          example:
+            status: 403
+            message: Request Forbidden
+            details: This request is forbidden
+    BadRequest:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+          example:
+            status: 400
+            message: Bad Request
+            details: The provided request is not valid
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+          example:
+            status: 409
+            message: Conflicting request
+            details: The request cannot be processed as the resource is in use.
+    Ok:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+          examples:
+            dataSample:
+              value: ""
+    Created:
+      description: Created
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: my-resource
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorMessage"
+          example:
+            status: 500
+            message: Internal Server Error
+            details: Internal Server Error occurred
+    NoContent:
+      description: No Content
+      content: {}

@@ -1,6 +1,6 @@
 /*
  * ============LICENSE_START=======================================================
- * Copyright (C) 2020-2021 Nordix Foundation.
+ * Copyright (C) 2020-2022 Nordix Foundation.
  * Modifications Copyright (C) 2021 Bell Canada.
  * Modifications Copyright (C) 2021 Pantheon.tech
  * ================================================================================
@@ -26,11 +26,13 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import lombok.AccessLevel;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 
 @Setter(AccessLevel.PROTECTED)
 @Getter
+@EqualsAndHashCode
 public class DataNode {
 
     DataNode() {    }

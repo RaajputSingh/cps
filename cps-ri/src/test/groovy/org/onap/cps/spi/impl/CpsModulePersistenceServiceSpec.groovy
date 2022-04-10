@@ -1,6 +1,7 @@
 /*
  * ============LICENSE_START=======================================================
  * Copyright (c) 2021 Bell Canada.
+ * Modifications Copyright (C) 2022 Nordix Foundation
  * ================================================================================
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,9 +20,11 @@
 package org.onap.cps.spi.impl
 
 import org.hibernate.exception.ConstraintViolationException
+import org.onap.cps.spi.CpsAdminPersistenceService
 import org.onap.cps.spi.CpsModulePersistenceService
 import org.onap.cps.spi.exceptions.DuplicatedYangResourceException
 import org.onap.cps.spi.repository.DataspaceRepository
+import org.onap.cps.spi.repository.ModuleReferenceRepository
 import org.onap.cps.spi.repository.SchemaSetRepository
 import org.onap.cps.spi.repository.YangResourceRepository
 import org.springframework.dao.DataIntegrityViolationException
@@ -42,14 +45,26 @@ class CpsModulePersistenceServiceSpec extends Specification {
     def dataspaceRepositoryMock = Mock(DataspaceRepository)
     def yangResourceRepositoryMock = Mock(YangResourceRepository)
     def schemaSetRepositoryMock = Mock(SchemaSetRepository)
+    def cpsAdminPersistenceServiceMock = Mock(CpsAdminPersistenceService)
+    def moduleReferenceRepositoryMock = Mock(ModuleReferenceRepository)
 
     // Constants
     def yangResourceName = 'my-yang-resource-name'
-    def yangResourceContent = 'my-yang-resource-content'
+    def yangResourceContent = 'module stores {\n' +
+            '    yang-version 1.1;\n' +
+            '    namespace "org:onap:ccsdk:sample";\n' +
+            '\n' +
+            '    prefix book-store;\n' +
+            '\n' +
+            '    revision "2020-09-15" {\n' +
+            '        description\n' +
+            '        "Sample Model";\n' +
+            '    }' +
+            '}'
 
     // Scenario data
     @Shared
-    yangResourceChecksum = 'ac2352cc20c10467528b2390bbf2d72d48b0319152ebaabcda207786b4a641c2'
+    yangResourceChecksum = 'b13faef573ed1374139d02c40d8ce09c80ea1dc70e63e464c1ed61568d48d539'
     @Shared
     yangResourceChecksumDbConstraint = 'yang_resource_checksum_key'
     @Shared
@@ -63,10 +78,8 @@ class CpsModulePersistenceServiceSpec extends Specification {
     anotherIntegrityException = new DataIntegrityViolationException("another integrity exception")
 
     def setup() {
-        objectUnderTest = new CpsModulePersistenceServiceImpl()
-        objectUnderTest.dataspaceRepository = dataspaceRepositoryMock
-        objectUnderTest.yangResourceRepository = yangResourceRepositoryMock
-        objectUnderTest.schemaSetRepository = schemaSetRepositoryMock
+        objectUnderTest = new CpsModulePersistenceServiceImpl(yangResourceRepositoryMock, schemaSetRepositoryMock,
+            dataspaceRepositoryMock, cpsAdminPersistenceServiceMock, moduleReferenceRepositoryMock)
     }
 
     def 'Store schema set error scenario: #scenario.'() {

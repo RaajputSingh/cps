@@ -1,7 +1,7 @@
 #  ============LICENSE_START=======================================================
 #  Copyright (C) 2021 Pantheon.tech
 #  Modifications Copyright (C) 2021 Bell Canada
-#  Modifications Copyright (C) 2021 Nordix Foundation
+#  Modifications Copyright (C) 2021-2022 Nordix Foundation
 #  ================================================================================
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -24,11 +24,14 @@ server:
 rest:
     api:
         cps-base-path: /cps/api
-        ncmp-base-path: /cps-ncmp/api
+        ncmp-base-path: /ncmp
+        ncmp-inventory-base-path: /ncmpInventory
 
 spring:
     main:
         banner-mode: "off"
+    application:
+        name: "cps-application"
     jpa:
         ddl-auto: create
         open-in-view: false
@@ -38,7 +41,7 @@ spring:
                 dialect: org.hibernate.dialect.PostgreSQLDialect
 
     datasource:
-        url: jdbc:postgresql://${DB_HOST}:5432/cpsdb
+        url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/cpsdb
         username: ${DB_USERNAME}
         password: ${DB_PASSWORD}
         driverClassName: org.postgresql.Driver
@@ -71,16 +74,35 @@ spring:
 notification:
     data-updated:
         enabled: false
-        topic: ${CPS_CHANGE_EVENT_TOPIC:cps.cfg-state-events}
+        topic: ${CPS_CHANGE_EVENT_TOPIC:cps.data-updated-events}
+        filters:
+            enabled-dataspaces: ${NOTIFICATION_DATASPACE_FILTER_PATTERNS:""}
+    async:
+        enabled: false
+        executor:
+            core-pool-size: 2
+            max-pool-size: 10
+            queue-capacity: 500
+            wait-for-tasks-to-complete-on-shutdown: true
+            thread-name-prefix: Async-
+
 
 springdoc:
     swagger-ui:
-        url: /openapi.yml
-        path: /swagger-ui/index.html
-        
+        disable-swagger-default-url: true
+        urlsPrimaryName: cps-core
+        urls:
+            - name: cps-core
+              url: /api-docs/cps-core/openapi.yaml
+            - name: cps-ncmp
+              url: /api-docs/cps-ncmp/openapi.yaml
+            - name: cps-ncmp-inventory
+              url: /api-docs/cps-ncmp/openapi-inventory.yaml
+
+
 security:
     # comma-separated uri patterns which do not require authorization
-    permit-uri: /manage/**,/swagger-ui/**,/swagger-resources/**,/v3/api-docs
+    permit-uri: /manage/**,/swagger-ui.html,/swagger-ui/**,/swagger-resources/**,/api-docs/**
     auth:
         username: ${CPS_USERNAME}
         password: ${CPS_PASSWORD}
@@ -105,3 +127,12 @@ logging:
     level:
         org:
             springframework: INFO
+            onap:
+                cps: INFO
+
+dmi:
+    auth:
+        username: ${DMI_USERNAME}
+        password: ${DMI_PASSWORD}
+    api:
+        base-path: dmi

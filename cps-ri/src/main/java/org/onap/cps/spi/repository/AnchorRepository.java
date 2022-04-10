@@ -1,6 +1,7 @@
 /*
  *  ============LICENSE_START=======================================================
  *  Copyright (C) 2021 Pantheon.tech
+ *  Modifications Copyright (C) 2021 Nordix Foundation
  *  ================================================================================
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +28,8 @@ import org.onap.cps.spi.entities.DataspaceEntity;
 import org.onap.cps.spi.entities.SchemaSetEntity;
 import org.onap.cps.spi.exceptions.AnchorNotFoundException;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface AnchorRepository extends JpaRepository<AnchorEntity, Integer> {
 
@@ -41,4 +44,16 @@ public interface AnchorRepository extends JpaRepository<AnchorEntity, Integer> {
     Collection<AnchorEntity> findAllByDataspace(@NotNull DataspaceEntity dataspaceEntity);
 
     Collection<AnchorEntity> findAllBySchemaSet(@NotNull SchemaSetEntity schemaSetEntity);
+
+    Integer countByDataspace(@NotNull DataspaceEntity dataspaceEntity);
+
+    @Query(value = "SELECT anchor.* FROM yang_resource\n"
+        + "JOIN schema_set_yang_resources ON schema_set_yang_resources.yang_resource_id = yang_resource.id\n"
+        + "JOIN schema_set ON schema_set.id = schema_set_yang_resources.schema_set_id\n"
+        + "JOIN anchor ON anchor.schema_set_id = schema_set.id\n"
+        + "WHERE schema_set.dataspace_id = :dataspaceId AND module_name IN (:moduleNames)\n"
+        + "GROUP BY anchor.id, anchor.name, anchor.dataspace_id, anchor.schema_set_id\n"
+        + "HAVING COUNT(DISTINCT module_name) = :sizeOfModuleNames", nativeQuery = true)
+    Collection<AnchorEntity> getAnchorsByDataspaceIdAndModuleNames(@Param("dataspaceId") int dataspaceId,
+        @Param("moduleNames") Collection<String> moduleNames, @Param("sizeOfModuleNames") int sizeOfModuleNames);
 }

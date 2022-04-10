@@ -1,7 +1,7 @@
 /*
  *  ============LICENSE_START=======================================================
  *  Copyright (C) 2020 Pantheon.tech
- *  Modifications Copyright (C) 2021 Nordix Foundation
+ *  Modifications Copyright (C) 2021-2022 Nordix Foundation
  *  ================================================================================
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,6 +22,9 @@
 package org.onap.cps.rest.exceptions;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.validation.ValidationException;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.onap.cps.rest.controller.AdminRestController;
 import org.onap.cps.rest.controller.DataRestController;
@@ -45,10 +48,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @Slf4j
 @RestControllerAdvice(assignableTypes = {AdminRestController.class, DataRestController.class,
     QueryRestController.class})
+@NoArgsConstructor(access = AccessLevel.PACKAGE)
 public class CpsRestExceptionHandler {
-
-    private CpsRestExceptionHandler() {
-    }
 
     /**
      * Default exception handler.
@@ -62,25 +63,25 @@ public class CpsRestExceptionHandler {
     }
 
     @ExceptionHandler({ModelValidationException.class, DataValidationException.class, CpsAdminException.class,
-        CpsPathException.class})
-    public static ResponseEntity<Object> handleBadRequestExceptions(final CpsException exception) {
+        CpsPathException.class, ValidationException.class})
+    public static ResponseEntity<Object> handleBadRequestExceptions(final Exception exception) {
         return buildErrorResponse(HttpStatus.BAD_REQUEST, exception);
     }
 
     @ExceptionHandler({NotFoundInDataspaceException.class, DataNodeNotFoundException.class})
-    public static ResponseEntity<Object> handleNotFoundExceptions(final CpsException exception,
+    public static ResponseEntity<Object> handleNotFoundExceptions(final Exception exception,
         final HttpServletRequest request) {
         return buildErrorResponse(HttpMethod.GET.matches(request.getMethod())
             ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST, exception);
     }
 
     @ExceptionHandler({DataInUseException.class, AlreadyDefinedException.class})
-    public static ResponseEntity<Object> handleDataInUseException(final CpsException exception) {
+    public static ResponseEntity<Object> handleDataInUseException(final Exception exception) {
         return buildErrorResponse(HttpStatus.CONFLICT, exception);
     }
 
     @ExceptionHandler({CpsException.class})
-    public static ResponseEntity<Object> handleAnyOtherCpsExceptions(final CpsException exception) {
+    public static ResponseEntity<Object> handleAnyOtherCpsExceptions(final Exception exception) {
         return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, exception);
     }
 

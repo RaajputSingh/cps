@@ -23,17 +23,15 @@ Documentation         CPS - Actuator endpoints
 Library               Collections
 Library               RequestsLibrary
 
-Suite Setup           Create Session    MANAGEMENT_URL    http://${CPS_HOST}:${MANAGEMENT_PORT}/manage
+Suite Setup           Create Session    MANAGEMENT_URL    http://${CPS_CORE_HOST}:${CPS_CORE_MANAGEMENT_PORT}/manage
 
 *** Variables ***
 
 
 *** Test Cases ***
-Test Liveness Probe Endpoint
-    ${response}=      GET On Session    MANAGEMENT_URL     health/liveness     expected_status=200
-    Should Be Equal As Strings          ${response.json()['status']}      UP
-
-Test Readiness Probe Endpoint
-    ${response}=      GET On Session    MANAGEMENT_URL     health/readiness    expected_status=200
-    Should Be Equal As Strings          ${response.json()['status']}      UP
-
+Test CPS Enhanced Healthcheck
+    [Documentation]     Runs CPS Health Check. It will check for overall status update of CPS component like, Database and diskspace status along with liveliness and readiness check
+    ${response}=      GET On Session    MANAGEMENT_URL     health    expected_status=200
+    ${resp_body}=      Convert to string     ${response.text}
+    Should Contain      ${resp_body}     UP
+    Should Not Contain      ${resp_body}     DOWN

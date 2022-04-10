@@ -3,7 +3,7 @@
   ============LICENSE_START=======================================================
   Copyright (c) 2021 Pantheon.tech.
   Modifications Copyright (C) 2021 Bell Canada.
-  Modifications Copyright (C) 2021 Nordix Foundation.
+  Modifications Copyright (C) 2021-2022 Nordix Foundation.
   ================================================================================
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -32,32 +32,44 @@
 
     <groupId>org.onap.cps</groupId>
     <artifactId>cps-parent</artifactId>
-    <version>1.1.0-SNAPSHOT</version>
+    <version>3.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <properties>
         <app>org.onap.cps.Application</app>
         <java.version>11</java.version>
-        <minimum-coverage>0.9</minimum-coverage>
+        <minimum-coverage>0.97</minimum-coverage>
 
         <jacoco.reportDirectory.aggregate>${project.reporting.outputDirectory}/jacoco-aggregate</jacoco.reportDirectory.aggregate>
         <sonar.coverage.jacoco.xmlReportPaths>
-            ../cps-ri/target/site/jacoco-ut/jacoco.xml,
-            ../cps-ri/target/site/jacoco-aggregate/jacoco.xml,
-            ../cps-service/target/site/jacoco-ut/jacoco.xml,
-            ../cps-service/target/site/jacoco-aggregate/jacoco.xml,
-            ../cps-rest/target/site/jacoco-ut/jacoco.xml,
-            ../cps-rest/target/site/jacoco-aggregate/jacoco.xml,
-            ../cps-ncmp-service/target/site/jacoco-ut/jacoco.xml,
-            ../cps-ncmp-service/target/site/jacoco-aggregate/jacoco.xml,
-            ../cps-ncmp-rest/target/site/jacoco-ut/jacoco.xml,
-            ../cps-ncmp-rest/target/site/jacoco-aggregate/jacoco.xml,
-            ../cps-path-parser/target/site/jacoco-ut/jacoco.xml,
-            ../cps-path-parser/target/site/jacoco-aggregate/jacoco.xml,
-            ../cps-application/target/site/jacoco-ut/jacoco.xml,
-            ../cps-application/target/site/jacoco-aggregate/jacoco.xml
+            ../jacoco-report/target/site/jacoco-aggregate/jacoco.xml
         </sonar.coverage.jacoco.xmlReportPaths>
     </properties>
+
+    <profiles>
+        <profile>
+            <id>Windows</id>
+            <activation>
+                <os>
+                    <family>Windows</family>
+                </os>
+            </activation>
+            <properties>
+                <script.executor>python</script.executor>
+            </properties>
+        </profile>
+        <profile>
+            <id>unix</id>
+            <activation>
+                <os>
+                    <family>unix</family>
+                </os>
+            </activation>
+            <properties>
+                <script.executor>python3</script.executor>
+            </properties>
+        </profile>
+    </profiles>
 
     <dependencyManagement>
         <dependencies>
@@ -103,7 +115,7 @@
                 <plugin>
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-maven-plugin</artifactId>
-                    <version>2.3.3.RELEASE</version>
+                    <version>2.6.4</version>
                     <executions>
                         <execution>
                             <goals>
@@ -122,7 +134,20 @@
                 <plugin>
                     <groupId>io.swagger.codegen.v3</groupId>
                     <artifactId>swagger-codegen-maven-plugin</artifactId>
-                    <version>3.0.18</version>
+                    <version>3.0.27</version>
+                    <executions>
+                        <execution>
+                            <id>openapi-yaml-gen</id>
+                            <goals>
+                                <goal>generate</goal>
+                            </goals>
+                            <phase>compile</phase>
+                            <configuration>
+                                <inputSpec>${project.basedir}/docs/openapi/openapi.yml</inputSpec>
+                                <language>openapi-yaml</language>
+                            </configuration>
+                        </execution>
+                    </executions>
                 </plugin>
                 <plugin>
                     <groupId>com.github.spotbugs</groupId>
@@ -333,8 +358,10 @@
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <configuration>
                     <excludes>
+                        <exclude>org/onap/cps/event/model/*</exclude>
                         <exclude>org/onap/cps/rest/model/*</exclude>
                         <exclude>org/onap/cps/cpspath/parser/antlr4/*</exclude>
+                        <exclude>org/onap/cps/ncmp/rest/model/*</exclude>
                     </excludes>
                 </configuration>
                 <executions>
@@ -365,18 +392,6 @@
                             </rules>
                         </configuration>
                     </execution>
-                    <execution>
-                        <id>report</id>
-                        <goals>
-                            <goal>report-aggregate</goal>
-                        </goals>
-                        <phase>verify</phase>
-                        <configuration>
-                            <dataFileIncludes>
-                                <fileInclude>**/code-coverage/jacoco-ut.exec</fileInclude>
-                            </dataFileIncludes>
-                        </configuration>
-                    </execution>
                 </executions>
             </plugin>
             <plugin>
@@ -386,6 +401,29 @@
             <plugin>
                 <groupId>org.sonarsource.scanner.maven</groupId>
                 <artifactId>sonar-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>1.6.0</version>
+                <executions>
+                    <execution>
+                        <id>generate-csv</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <executable>${script.executor}</executable>
+                    <workingDirectory>../cps-ri/src/main/resources/</workingDirectory>
+                    <arguments>
+                        <argument>yangResourceCsvGenerator.py</argument>
+                        <argument>dmi-registry@2021-12-13</argument>
+                        <argument>dmi-registry@2022-02-10</argument>
+                    </arguments>
+                </configuration>
             </plugin>
         </plugins>
     </build>
