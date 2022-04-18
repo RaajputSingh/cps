@@ -28,6 +28,7 @@
         <groupId>org.onap.oparent</groupId>
         <artifactId>oparent</artifactId>
         <version>3.2.0</version>
+        <relativePath>../oparent/oparent</relativePath>
     </parent>
 
     <groupId>org.onap.cps</groupId>
